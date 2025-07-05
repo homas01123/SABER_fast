@@ -31,15 +31,15 @@ border <- list(
   y1 = 1
 )
 
-library(reticulate)
-use_condaenv("kaleido", required = TRUE)
-py_config()
-py_run_string("import sys")
+# library(reticulate)
+# use_condaenv("kaleido", required = TRUE)
+# py_config()
+# py_run_string("import sys")
 
-here <- function(...) {
-  start <- "/D/Documents/phd/thesis"
-  file.path(start, ...)
-}
+# here <- function(...) {
+#   start <- "/D/Documents/phd/thesis"
+#   file.path(start, ...)
+# }
 ```
 
 ## Overview
@@ -63,20 +63,27 @@ rrs <- rrs_hw %>%
 par_fixed <- c(
   "water_type" = 2,
   "theta_view" = 0,
-  "theta_sun" = 20
+  #"theta_sun" = 20,
+  "h_w" = NULL, 
+  "r_rs_b_saccharina" = NULL, 
+  "r_rs_b_cca " = NULL, 
+  "r_rs_b_gravel" = NULL
 )
 
 par_unconstrained <- inverse_mcmc(
   rrs = rrs,
   forward_model = "am03",
-        par_inversed = c("chl", "a_g_440", "a_g_s", "bb_p_550", "bb_p_gamma", "h_w", "r_rs_b_saccharina", "r_rs_b_cca", "r_rs_b_gravel", "sd"),
+        par_inversed = c("theta_sun","chl", "a_g_440", "a_g_s", "bb_p_550", "bb_p_gamma", "sd"),
         prior = NULL,
-        lower = c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0001),
-        best = c(1, 4, 0.017, 0.04, 0.46, 4, 0.5, 0.1, 0.25, 0.1),
-        upper = c(10, 10, 1, 0.1, 5, 20, 1, 0.15, 1, 1),
+        lower = c(10,0, 0, 0, 0, 0, #0, 0, 0, 0, 
+                  0.0001),
+        best = c(20,1, 4, 0.017, 0.04, 0.46, #4, 0.5, 0.1, 0.25, 
+                 0.1),
+        upper = c(30,10, 1.5, 0.025, 0.1, 1, #20, 1, 0.15, 1, 
+                  10),
   par_fixed = par_fixed,
-  iterations = 2.5e4,
-  burnin = 2000,
+  iterations = 3e4,
+  burnin = 7000,
   sampler = "DEzs"
 )
 ```
@@ -108,7 +115,7 @@ rrs_unconstrained <- forward_am03(
   iop = iop_unconstrained,
   water_type = 2,
   theta_view = 0,
-  theta_sun = 20,
+  theta_sun = par_unconstrained["theta_sun"],
   h_w = par_unconstrained["h_w"],
   r_b = rrs_bottom
 )
@@ -142,7 +149,7 @@ ply <- plot_ly() %>%
     shapes = list(border),
     legend = list(
       font = list(
-        size = 20),
+        size = 12),
       bgcolor = "rgba(105, 159, 245, 0.0)",#"#FFFFFF",
       xanchor = "top-right",
       yanchor = "top-right",
@@ -157,39 +164,41 @@ ply
 # save_image(ply, here("2_chapter/figure/rrs_input_estimates_output_unconstrained.png"), width = 800, height = 700, scale = 4)
 ```
 
-### Bottom reflectance retrieval
+### Bottom reflectance retrieval (This is yet to be developed)
 
 ```{r}
-r_rs_b_retrieved_unconstrained <- retrieve_r_rs_b_am03(
-  wavelength = rrs$wavelength,
-  iop = iop_unconstrained,
-  r_rs = rrs$rrs_0m,
-  water_type = 2,
-  theta_view = 0,
-  theta_sun = 20,
-  h_w = par_unconstrained["h_w"]
-)
-
-ply <- plot_ly() %>%
-  add_lines(x = rrs$wavelength, y = r_rs_b_retrieved_unconstrained, name = "r_rs_b_unconstrained") %>%
-  layout(
-    yaxis = list(
-      title = TeX("R_\\text{rs}(\\text{bottom}) [sr^{-1}]"),
-      range = c(-0.01, 0.6)
-      ),
-    xaxis = list(
-      title = TeX("\\text{wavelength}[\\text{nm}]")
-      ),
-    font = font,
-    shapes = list(border)
-  ) %>%
-  config(mathjax = "cdn", displayModeBar = T)
-
-ply
+# r_rs_b_retrieved_unconstrained <- retrieve_r_rs_b_am03(
+#   wavelength = rrs$wavelength,
+#   iop = iop_unconstrained,
+#   r_rs = rrs$rrs_0m,
+#   water_type = 2,
+#   theta_view = 0,
+#   theta_sun = 20,
+#   h_w = par_unconstrained["h_w"]
+# )
+# 
+# ply <- plot_ly() %>%
+#   add_lines(x = rrs$wavelength, y = r_rs_b_retrieved_unconstrained, name = "r_rs_b_unconstrained") %>%
+#   layout(
+#     yaxis = list(
+#       title = TeX("R_\\text{rs}(\\text{bottom}) [sr^{-1}]"),
+#       range = c(-0.01, 0.6)
+#       ),
+#     xaxis = list(
+#       title = TeX("\\text{wavelength}[\\text{nm}]")
+#       ),
+#     font = font,
+#     shapes = list(border)
+#   ) %>%
+#   config(mathjax = "cdn", displayModeBar = T)
+# 
+# ply
 # save_image(ply, here("2_chapter/figure/retrieved_bottom_reflectance_unconstrained.png"), width = 800, height = 700, scale = 4)
 ```
 
 ### Batch processing
+
+#### Load the observations
 
 ```{r}
 ensembles <- unique(rrs_hw$ensemble)
@@ -252,6 +261,7 @@ rrs_hw_sub <- rrs_hw_sub %>%
 ply <- traces[[140]]#purrr::reduce(traces, add_trace)
 ply
 ```
+#### Run the Inversion
 
 ```{r}
 par_fixed <- c(

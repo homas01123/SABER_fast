@@ -31,6 +31,20 @@ SEXP c_compute_r_rs_b_lmm(SEXP fractions) {
   int n_frac = Rf_length(fractions);
   double* fracs = REAL(fractions);
 
+  // --- NEW: Check if all fractions are NA ---
+  int all_na = 1;
+  for (int j = 0; j < n_frac; j++) {
+    if (!ISNAN(fracs[j])) {
+      all_na = 0;
+      break;
+    }
+  }
+  if (all_na) {
+    Rf_warning("All r_rs_b_* values are NULL (NA); water type is optically deep.");
+    return R_NilValue;
+  }
+  // --- END NEW ---
+
   // Normalize fractions
   double sum_frac = 0.0;
   for (int j = 0; j < n_frac; j++) {

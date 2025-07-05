@@ -51,10 +51,10 @@ oac_vec <- stats::setNames(oac$value, oac$name)
 
 iop <- iop_from_oac(
   wavelength,
-  oac = oac_vec,
-  rrs = NULL,
-  optically_shallow = T,
-  verbose = T
+  par = oac_vec
+  #rrs = NULL,
+  #optically_shallow = T,
+  #verbose = T
 )
 ```
 

@@ -16,13 +16,24 @@ input_am03 <- function(par, rrs) {
   #   )
   # }
 
+
   iop <- iop_from_oac(rrs$wavelength, par)
 
   r_b_fraction_vec <- par[grep("^r_rs_b", names(par))]
 
-  r_b <- compute_r_rs_b_lmm(
-    fractions = r_b_fraction_vec
-  )
+  # Check if all r_b fractions are NA or NULL
+  if (all(is.na(r_b_fraction_vec)) || length(r_b_fraction_vec) == 0) {
+    r_b <- NULL
+  } else {
+    r_b <- compute_r_rs_b_lmm(fractions = r_b_fraction_vec)
+  }
+
+  # If h_w is NA or NULL, set to NULL
+  h_w <- if (is.null(par["h_w"]) || is.na(par["h_w"])) NULL else par["h_w"]
+
+  # r_b <- compute_r_rs_b_lmm(
+  #   fractions = r_b_fraction_vec
+  # )
 
   list(
     wavelength = rrs$wavelength,
