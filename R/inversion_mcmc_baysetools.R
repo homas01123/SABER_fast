@@ -87,8 +87,8 @@ inverse_mcmc <- function(
   estimates_sd <- colMeans(estimates_sd)
 
   par_estimates <- stats::setNames(
-    c(MAP(out)[[1]], estimates_sd),
-    c(names(MAP(out)[[1]]), paste0(names(MAP(out)[[1]]), "_sd"))
+    c(BayesianTools::MAP(out)[[1]], estimates_sd),
+    c(names(BayesianTools::MAP(out)[[1]]), paste0(names(BayesianTools::MAP(out)[[1]]), "_sd"))
   )
 
   return(par_estimates)

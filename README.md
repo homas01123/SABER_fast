@@ -1,11 +1,14 @@
-# S.A.B.E.R
-## Semi Analytical Bayesian Error Retrieval
+# S.A.B.E.R (Semi Analytical Bayesian Estimate Retrieval)
 
-A radiative transfer model to retrieve inherent optical proprieties, water depth and bottom reflectance from remote sensing reflectance.
-Implement Markov Chain Monte Carlo
+A Semi Analytically paramterized aquatic radiative transfer model to primariliy retrieve posterior distributions of Optically Significant Constituents (OSCs), water depth and benthic reflectance from user input of remote sensing reflectance.
 
 Creator and original developer: Soham Mukherjee
 Packaging: Raphael Mabit
+Maintenance: Soham Mukherjee
+
+## Outline of the mathemtical and physics-based formulation
+
+The user is refered to the publication ``A Semi-Analytical Bayesian Estimate Retrieval (SABER) algorithm for the inversion of Remote Sensing Reflectance in optically deep and shallow waters'' (https:/)
 
 ## Outline of the code structure
 
@@ -13,7 +16,7 @@ This package follow the recommendations of https://r-pkgs.org/ and the tidyverse
 
 The code is written with a functional approach. The "business" logic
 (the low level functions) are written in file names starting with (`fct_*`),
-more generic function are written under (`utils_*`) files.
+more generic function are written under (`utils_*`) files. The `fct_*` files usually stores procedures for the low-level computations, that refer to `C` written functions (or its compiled objects) inside the `src`.
 
 The central piece of code that stitches together the forward models with the objective function is `objective_factory` high level function.
 It allows to easily combine any forward model with any objective functions, even those that a user might add.
@@ -23,15 +26,4 @@ A registry is an environment in which specific function are stored and can
 be retrieved by name in the higher level function arguments.
 The three registry currently in use are `.input_preparer_registry`, `.forward_model_registry`, `.objective_function_registry`.
 
-## Questions
-
-* Where does the pure water IOPs comes from ? a = Pope 97, b = Morel 74
-* In pure water IOP Why different pure water bb values for case one or two waters ? pure water IOP does not depends on water type.
-* Where does the parametric formula to retrieve spectral slope of CDOM + NAP comes from, QAA ? QAA v5 or 6
-* Use `saber_forward_parametric_conc_wise.R` as authoritative final function.
-* The inversion of fraction rb_class is not constrained to unity ? Seems like a difficult problem ...
-* What about the geometry in inversion ? With whihch value do we parametrize forward models ?
-* Is it really rrs_bottom [sr^-1], is it not just Rb [dimensionless] ? Check the SVC method !
-* What's the logic between negative and positive log-ll? minimizing the error vs maximizing the likelihood?
-
-* We should probably not use extrapolation of spectrum. for example the phyto absorption spectrum in `iop_from_oac`
+## Running the code

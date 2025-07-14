@@ -28,15 +28,18 @@
 #' @param verbose guess
 #'
 #' @export
-
+myFun <- function(x) {
+  NA
+}
 inversion_gradient <- function(
     rrs,
     forward_model,
     objective_fct,
     optim_mtd,
-    par_init,
+    par_inversed,
     par_fixed = NULL,
     lower_b = NULL,
+    init_val = NULL,
     upper_b = NULL,
     verbose = F) {
   rlang::inform(paste0("\033[0;33m", "###################################################################", "\033[0m", "\n"))
@@ -47,12 +50,17 @@ inversion_gradient <- function(
     model = forward_model,
     objective = objective_fct,
     rrs_observed = rrs,
-    par_fixed = par_fixed
+    par_fixed = par_fixed,
+    par_inversed = par_inversed
   )
 
   # Instantiate initial values
   params <- parse_inverse_parameter(
-    par_init, optim_mtd, lower_b, upper_b, verbose
+    par_df = data.frame("name" = par_inversed, "value" = init_val),
+    optim_mtd=optim_mtd,
+    lower_b = lower_b,
+    upper_b = upper_b,
+    verbose = verbose
   )
 
   par <- params$par
@@ -142,20 +150,25 @@ inversion_gradient <- function(
   }
 
   if (verbose) {
-    rownames(hessian_inverse) <- par_init$name
-    colnames(hessian_inverse) <- par_init$name
+    rownames(hessian_inverse) <- par_inversed
+    colnames(hessian_inverse) <- par_inversed
     rlang::inform(paste0("\033[0;32m", "#################### VAR-COV HESSIAN MATRIX #########################", "\033[0m", "\n"))
     prmatrix(hessian_inverse)
   }
 
   param_estimate <- optim_result$par
 
-  param_sd <- tryCatch(
-    {
-      sqrt(diag(solve(hessian_inverse)))
-    }, # solve for diagonal elements to get sd
-    objective = NA
+  param_sd <- tryCatch({
+    sqrt(diag(solve(hessian.inverse)))}, #solve for diagonal elements to get sd
+    error = myFun
   )
+
+  # param_sd <- tryCatch(
+  #   {
+  #     sqrt(diag(solve(hessian_inverse)))
+  #   }, # solve for diagonal elements to get sd
+  #   objective = NA
+  # )
 
   end.time <- Sys.time()
 
@@ -168,7 +181,7 @@ inversion_gradient <- function(
 
   # Maximum Likelihood Estimates
   mle <- tibble(
-    "name" = par_init$name,
+    "name" = par_inversed,
     "estimate" = param_estimate,
     "sd" = param_sd
   )
@@ -193,60 +206,60 @@ inversion_gradient <- function(
 #' pre_fit_inversion
 #'
 
-pre_fit_inversion <- function() {
-  # 5.1 Pre-FIT of initial values
-  if (preFit == TRUE) {
-    pre.Fit <- data.frame(
-      "C_ph" = seq(1, 10, 0.5), # <<USER DEFINED >>
-      "a_cdom.440" = seq(0.5, 5, 0.25),
-      "a.nap.440" = seq(0.01, 0.1, 0.005)
-    )
-
-    pre.Fit.input.LUT <- expand.grid(pre.Fit) # Create pre-Fit parameter space LUT
-
-    preFIT.rrs.forward.LUT <- matrix(
-      nrow = length(pre.Fit.input.LUT$C_ph),
-      ncol = length(wavelength), 0
-    )
-    # Create the Progress Bar
-    pb <- txtProgressBar(
-      min = 0, # Minimum value of the progress bar
-      max = length(pre.Fit.input.LUT$C_ph), # Maximum value of the progress bar
-      style = 3, # Progress bar style (also available style = 1 and style = 2)
-      width = 50, # Progress bar width. Defaults to getOption("width")
-      char = "="
-    )
-
-    reslist <- vector()
-    for (i in 1:length(pre.Fit.input.LUT$C_ph)) { # Create Rrs LUT
-      temp1 <- as.numeric(pre.Fit.input.LUT[i, ])
-      temp2 <- Saber_forward(
-        chl = temp1[1], acdom440 = temp1[2],
-        anap440 = temp1[3], bbp.550 = Fit.input$bbp.550,
-        realdata = obsdata, verbose = F
-      )
-
-      preFIT.rrs.forward.LUT[i, ] <- temp2[[1]]$Rrs
-      reslist[i] <- temp2[[2]]
-      # cat(paste0("\033[0;43m",i," iterations over, ", (nrow(preFIT.rrs.forward.LUT) - i), " remaining","\033[0m","\n"))
-      setTxtProgressBar(pb, i)
-      if (i == length(pre.Fit.input.LUT$C_ph)) {
-        cat(paste0("\033[0;32m", "###############PRE-FIT FINISHED################", "\033[0m", "\n"))
-      }
-    }
-
-    prefit.best <- pre.Fit.input.LUT[which.min(reslist), ] # retrieve best initial values
-    # using C.R.I.S.T.A.L.[minimizing SSR]
-    prefit.best
-
-    rrs.prefit <- Saber_forward(
-      chl = prefit.best$C_ph, acdom440 = prefit.best$a_cdom.440,
-      anap440 = prefit.best$a.nap.440, bbp.550 = Fit.input$bbp.550,
-      realdata = obsdata, verbose = T
-    )[[1]]$Rrs
-
-    # Show prefit spectra (Convert to ggplot2)
-    plot(wavelength, obsdata, type = "l", col = "red", ylim = c(0, max(obsdata)))
-    lines(wavelength, rrs.prefit, col = "green")
-  }
-}
+# pre_fit_inversion <- function() {
+#   # 5.1 Pre-FIT of initial values
+#   if (preFit == TRUE) {
+#     pre.Fit <- data.frame(
+#       "C_ph" = seq(1, 10, 0.5), # <<USER DEFINED >>
+#       "a_cdom.440" = seq(0.5, 5, 0.25),
+#       "a.nap.440" = seq(0.01, 0.1, 0.005)
+#     )
+#
+#     pre.Fit.input.LUT <- expand.grid(pre.Fit) # Create pre-Fit parameter space LUT
+#
+#     preFIT.rrs.forward.LUT <- matrix(
+#       nrow = length(pre.Fit.input.LUT$C_ph),
+#       ncol = length(wavelength), 0
+#     )
+#     # Create the Progress Bar
+#     pb <- txtProgressBar(
+#       min = 0, # Minimum value of the progress bar
+#       max = length(pre.Fit.input.LUT$C_ph), # Maximum value of the progress bar
+#       style = 3, # Progress bar style (also available style = 1 and style = 2)
+#       width = 50, # Progress bar width. Defaults to getOption("width")
+#       char = "="
+#     )
+#
+#     reslist <- vector()
+#     for (i in 1:length(pre.Fit.input.LUT$C_ph)) { # Create Rrs LUT
+#       temp1 <- as.numeric(pre.Fit.input.LUT[i, ])
+#       temp2 <- Saber_forward(
+#         chl = temp1[1], acdom440 = temp1[2],
+#         anap440 = temp1[3], bbp.550 = Fit.input$bbp.550,
+#         realdata = obsdata, verbose = F
+#       )
+#
+#       preFIT.rrs.forward.LUT[i, ] <- temp2[[1]]$Rrs
+#       reslist[i] <- temp2[[2]]
+#       # cat(paste0("\033[0;43m",i," iterations over, ", (nrow(preFIT.rrs.forward.LUT) - i), " remaining","\033[0m","\n"))
+#       setTxtProgressBar(pb, i)
+#       if (i == length(pre.Fit.input.LUT$C_ph)) {
+#         cat(paste0("\033[0;32m", "###############PRE-FIT FINISHED################", "\033[0m", "\n"))
+#       }
+#     }
+#
+#     prefit.best <- pre.Fit.input.LUT[which.min(reslist), ] # retrieve best initial values
+#     # using C.R.I.S.T.A.L.[minimizing SSR]
+#     prefit.best
+#
+#     rrs.prefit <- Saber_forward(
+#       chl = prefit.best$C_ph, acdom440 = prefit.best$a_cdom.440,
+#       anap440 = prefit.best$a.nap.440, bbp.550 = Fit.input$bbp.550,
+#       realdata = obsdata, verbose = T
+#     )[[1]]$Rrs
+#
+#     # Show prefit spectra (Convert to ggplot2)
+#     plot(wavelength, obsdata, type = "l", col = "red", ylim = c(0, max(obsdata)))
+#     lines(wavelength, rrs.prefit, col = "green")
+#   }
+# }

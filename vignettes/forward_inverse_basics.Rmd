@@ -85,7 +85,7 @@ The model we use here is Albert & Mobley 2003 (`"am03"`).
 
 ```{r}
 test_case <- tibble(
-  name = c("water_type", "theta_view", "theta_sun", "optically_shallow", "h_w"),
+  name = c("water_type", "theta_view", "theta_sun", , "h_w"),
   value = c(2, 0, 20, T, 2)
 )
 
@@ -128,22 +128,40 @@ The known parameter are passed with the `par_fixed` argument.
 
 
 ```{r}
-par_init <- tibble(
-  name = c("chl", "a_g_440", "bb_p_550"),
-  value = c(0.1, 2, 0.05),
+par_fixed <- c(
+  "water_type" = 2,
+  "theta_view" = 0,
+  "theta_sun" = 20
+  #"h_w" = NULL, 
+  #"r_rs_b_saccharina" = NULL, 
+  #"r_rs_b_cca " = NULL, 
+  #"r_rs_b_gravel" = NULL
 )
 
-par_fixed <- bind_rows(test_case, r_b_fraction)
-par_fixed <- bind_rows(par_fixed, tibble(name = "sd", value = 1))
+#par_fixed <- bind_rows(test_case, r_b_fraction)
+#par_fixed <- bind_rows(par_fixed, tibble(name = "sd", value = 1))
+
+par_inversed <- c("chl", "a_g_440", "a_g_s", "bb_p_550", "bb_p_gamma", 
+                  "h_w" , "r_rs_b_saccharina" , "r_rs_b_cca", "r_rs_b_gravel",
+                  "sd")
 
 res_grad <- inversion_gradient(
-  rrs = rrs,
+  rrs = rrs_test,
   forward_model = "am03",
   objective_fct = "log-ll",
   optim_mtd = "L-BFGS-B",
-  par_init = par_init,
+  par_inversed  = par_inversed,
   par_fixed = par_fixed,
-  verbose = F
+  verbose = F, 
+  lower_b = c(0.1, 0.01, 0.001, 0.001, 0.1, 
+              0.1, 0.1, 0.1, 0.1, 
+                  0.0001), 
+  init_val = c(1, 0.75, 0.017, 0.04, 0.46, 
+               4, 0.5, 0.1, 0.25, 
+                 0.1),
+  upper_b =c(20, 2.5, 0.025, 0.1, 1, 
+             20, 1, 1, 1, 
+                  10) 
 )
 ```
 
@@ -158,12 +176,12 @@ iop_grad <- iop_from_oac(
 )
 
 rrs_grad <- forward_am03(
-  wavelength = wavelength,
+  wavelength = rrs$wavelength,
   iop = iop_grad,
-  water_type = test_case_vec["water_type"],
-  theta_view = test_case_vec["theta_view"],
-  theta_sun = test_case_vec["theta_sun"],
-  optically_shallow = test_case_vec["optically_shallow"],
+  water_type = 2,
+  theta_view = 0,
+  theta_sun = 20,
+  #optically_shallow = test_case_vec["optically_shallow"],
   h_w = test_case_vec["h_w"],
   r_b = r_b
 )

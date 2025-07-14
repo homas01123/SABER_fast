@@ -8,7 +8,7 @@
 
   data("r_rs_b_gamache", package = pkgname, envir = environment())
   r_rs_b <- r_rs_b_gamache %>%
-    select(class, wavelength, r_rs_b_mean) %>%
+    dplyr::select(class, wavelength, r_rs_b_mean) %>%
     tidyr::pivot_wider(
       names_from = "class",
       values_from = "r_rs_b_mean",
