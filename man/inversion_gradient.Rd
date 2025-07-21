@@ -13,9 +13,10 @@ inversion_gradient(
   forward_model,
   objective_fct,
   optim_mtd,
-  par_init,
+  par_inversed,
   par_fixed = NULL,
   lower_b = NULL,
+  init_val = NULL,
   upper_b = NULL,
   verbose = F
 )
@@ -27,6 +28,13 @@ inversion_gradient(
 
 \item{optim_mtd}{c("nelder-mead", "BFGS", "CG", "L-BFGS-B", "sann", "brent","levenberg-marqardt", "auglag")}
 
+\item{lower_b}{Optional, lower boundary for \code{optim_mtd = "L-BFGS-B"}.
+If not provided will be calculated in \code{parse_inverse_parameter}}
+
+\item{upper_b}{Optional, same as \code{lower_b}.}
+
+\item{verbose}{guess}
+
 \item{par_init}{a tibble with the initial parameter to be inverted.
 For best results, can be estimated with \code{pre_fit_inversion}.
 \describe{
@@ -37,13 +45,6 @@ For best results, can be estimated with \code{pre_fit_inversion}.
 \item{rb_*}{fraction of end-member bottom reflectance class}
 \item{sd}{Optional, standard deviaton of the population for \code{objective_fct = "log-ll"}}
 }}
-
-\item{lower_b}{Optional, lower boundary for \code{optim_mtd = "L-BFGS-B"}.
-If not provided will be calculated in \code{parse_inverse_parameter}}
-
-\item{upper_b}{Optional, same as \code{lower_b}.}
-
-\item{verbose}{guess}
 
 \item{fixed_par}{Optional, a tibble with the same columns as par_init.
 Parameter defined here will be considered known, hence not retrieved during

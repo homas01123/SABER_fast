@@ -28,9 +28,6 @@
 #' @param verbose guess
 #'
 #' @export
-myFun <- function(x) {
-  NA
-}
 inversion_gradient <- function(
     rrs,
     forward_model,
@@ -201,6 +198,12 @@ inversion_gradient <- function(
   }
 
   return(mle)
+}
+
+
+#' @export
+myFun <- function(x) {
+  NA
 }
 
 #' pre_fit_inversion
