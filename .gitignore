@@ -10,6 +10,9 @@
 *.so.*
 *.dll
 *.dylib
+# aux file types
+*.png
+*.nc
 # auto‑generated binaries / executables
 /examples/**/bernoulli
 */bin/*
