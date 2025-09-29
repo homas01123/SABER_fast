@@ -1,11 +1,11 @@
 Package: SABER
 Type: Package
-Title: SABER - Spectral Absorption and Backscattering Estimation in Radiative Transfer
+Title: SABER - Semi Analytical Bayesian Estimate Retrieval
 Version: 0.0.0.9000
 Authors@R: 
-    person("Soham", "Mukherjee", email = "first.last@example.com", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: Tools for modeling inherent optical properties (IOPs) in aquatic environments
+    person("Soham", "Mukherjee", email = "saion523@gmail.com", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0001-9771-0778"))
+Description: Tools for modeling inherent optical properties (IOPs) and benthic parameters in aquatic environments
     using modular, fast forward models based on radiative transfer principles.
 License: GPL (>= 3)
 Encoding: UTF-8
@@ -16,10 +16,16 @@ Depends:
     R (>= 3.5)
 SystemRequirements: pkg-config, saber-lib (>= 0.1.0)
 Imports: 
-    methods
+    methods,
+    dplyr,
+    tibble,
+    tidyr,
+    magrittr,
+    stringr,
+    BayesianTools
 # LinkingTo: cmdstanr
 Suggests: 
     knitr,
     rmarkdown,
-    testthat
+    testthat,
 VignetteBuilder: knitr

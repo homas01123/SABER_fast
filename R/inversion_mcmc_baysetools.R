@@ -34,6 +34,28 @@ make_prior_bundle <- function(priors, lower, upper, best_guess = NULL) {
   )
 }
 
+
+
+#' SABER inverse model using MCMC sampling
+#'
+#' Retrieve optically deep water OSCs and benthic variables from input Rrs and wavelength
+#'
+#' @param rrs data-frame of wavelengths [nm] and sub-surface Rrs (must be named as rrs_0m) [1/sr]
+#' @param forward_model the SA forward model to be used (e.g. "am03")
+#' @param par_inversed vector of parameter names to be inversed (e.g. c("chl", "a_g_440", "bb_p_550"))
+#' @param prior prior function (see make_prior_bundle) or can set as NULL for uniform prior
+#' @param lower numeric vector containing lower bounds for each parameter in par_inversed. The order must match par_inversed.
+#' @param upper numeric vector containing upper bounds for each parameter in par_inversed. The order must match par_inversed.
+#' @param best numeric vector containing best guess values for each parameter in par_inversed. The order must match par_inversed.
+#' @param par_fixed named list of fixed parameters to be passed to the forward model (e.g. c(water_type = 2, theta_sun = 30, theta_view = 0...))
+#' @param iterations number of MCMC iterations (default = 10000, recommended > 15000)
+#' @param burnin number of burnin iterations (default = 2000)
+#' @param sampler MCMC sampler to be used (default = "DEzs", see BayesianTools documentation for other options)
+
+#' @return numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_g_440 = 0.1, a_g_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
+#'
+#' @references Mukherjee, S., Mabit, R. and Bélanger, S. (2025), A semi-analytical Bayesian estimate retrieval algorithm for the inversion of remote-sensing reflectance in optically deep and shallow waters. Limnol Oceanogr Methods. https://doi.org/10.1002/lom3.70004
+#'
 #' @export
 inverse_mcmc <- function(
     rrs,

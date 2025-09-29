@@ -62,12 +62,12 @@ rrs <- rrs_hw %>%
 ```{r}
 par_fixed <- c(
   "water_type" = 2,
-  "theta_view" = 0
+  "theta_view" = 0,
   #"theta_sun" = 20,
-  #"h_w" = NULL, 
-  #"r_rs_b_saccharina" = NULL, 
-  #"r_rs_b_cca" = NULL, 
-  #"r_rs_b_gravel" = NULL
+  "h_w" = NULL, 
+  "r_rs_b_saccharina" = NULL, 
+  "r_rs_b_cca" = NULL, 
+  "r_rs_b_gravel" = NULL
 )
 
 par_unconstrained <- inverse_mcmc(
@@ -76,23 +76,23 @@ par_unconstrained <- inverse_mcmc(
         par_inversed = c("theta_sun",
                          "chl", "a_g_440", "a_g_s", "bb_p_550", "bb_p_gamma", 
                          
-                         "h_w",  "r_rs_b_saccharina" , "r_rs_b_cca" , "r_rs_b_gravel",
+                        # "h_w",  "r_rs_b_saccharina" , "r_rs_b_cca" , "r_rs_b_gravel",
                          
                         "sd"),
         prior = NULL,
         lower = c(10,
                   0.1, 0.01, 0.001, 0.002, 0.2, 
-                  0.5, 0.1, 0.1, 0.1, 
+                #  0.5, 0.1, 0.1, 0.1, 
                   0.0001),
   
         best = c(20,
                  1, 4, 0.017, 0.04, 0.46, 
-                 4, 0.5, 0.1, 0.25, 
+                # 4, 0.5, 0.1, 0.25, 
                  0.1),
   
         upper = c(50,
                   10, 1.5, 0.025, 0.1, 1, 
-                  20, 1, 1, 1, 
+                 # 20, 1, 1, 1, 
                   10),
   par_fixed = par_fixed,
   iterations = 3e4,

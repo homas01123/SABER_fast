@@ -35,7 +35,7 @@ The first step is to choose a bio-optical model to compute the Inherent Optical 
 The `verbose = T` argument will create plots of the retrieved spectral IOP, this way we can quickly check what's going on. 
 
 ```{r}
-wavelength <- seq(350, 800, 5)
+wavelength <- seq(400, 700, 5)
 # Without manual slope
 # oac <- tibble(
 #   name = c("chl", "a_g_440", "bb_p_550"),
@@ -44,7 +44,7 @@ wavelength <- seq(350, 800, 5)
 # With manual slope
 oac <- tibble(
   name = c("chl", "a_g_440", "bb_p_550", "a_g_s_g", "a_g_s_d", "bb_p_gamma"),
-  value = c(0.1, 2.5, 0.05, 0.014, 0.003, 0.5)
+  value = c(5, 0.9, 0.005, 0.014, 0.003, 0.5)
 )
 
 oac_vec <- stats::setNames(oac$value, oac$name)
@@ -58,26 +58,6 @@ iop <- iop_from_oac(
 )
 ```
 
-### Computing bottom reflectance
-
-If we are in shallow waters, we need to account for the bottom reflectance impact on $R_\text{rs}$. SABER does that by computing bottom reflectance as a linear mixture of end-members bottom reflectance spectrum. SABER include a dataset of end-members bottom reflectance spectrum. Those where acquired in-situ by a diving team with an SVC (*Paper to be published*).
-
-```{r}
-r_b_fraction <- tibble(
-  name = c("rb_rock_2023", "rb_sand_2023", "rb_saccha_2023"),
-  value = c(0.1, 0.1, 0.8)
-)
-
-r_b_fraction_vec <- stats::setNames(r_b_fraction$value, r_b_fraction$name)
-
-r_b <- r_b_lmm(
-  r_b_spectrum = r_b_class_egsl,
-  r_b_fraction = r_b_fraction_vec,
-  wavelength = wavelength,
-  verbose = T
-)
-```
-
 ### Runing the forward model
 
 To run the forward model we will create a list that contains the inputs the model need. 
@@ -85,8 +65,8 @@ The model we use here is Albert & Mobley 2003 (`"am03"`).
 
 ```{r}
 test_case <- tibble(
-  name = c("water_type", "theta_view", "theta_sun", , "h_w"),
-  value = c(2, 0, 20, T, 2)
+  name = c("water_type", "theta_view", "theta_sun"),
+  value = c(2, 0, 20)
 )
 
 test_case_vec <- stats::setNames(test_case$value, test_case$name)
@@ -97,12 +77,16 @@ rrs <- forward_am03(
   water_type = test_case_vec["water_type"],
   theta_view = test_case_vec["theta_view"],
   theta_sun = test_case_vec["theta_sun"],
-  optically_shallow = test_case_vec["optically_shallow"],
-  h_w = test_case_vec["h_w"],
-  r_b = r_b
+
+  h_w = NULL,
+  r_b = NULL
+)
+rrs_vec <- tibble(
+  wavelength = wavelength,
+  rrs_0m = rrs
 )
 
-ply <- plot_ly(rrs) %>%
+ply <- plot_ly(rrs_vec) %>%
   add_lines(
     x = ~wavelength,
     y = ~rrs_0m
@@ -118,159 +102,91 @@ The inversion process consist in finding the optimal input parameter to a forwar
 Two categories of inversion are implemented in SABER, gradient based, and markov-chain monte-carlo (mcmc).
 In the following section we will demonstrate the use of gradient based inversion with augmented lagrangian optimization.
 
-### Gradient inversion
+### MCMC inversion
 
-Run the `inversion_optimization` function. Use an `optim_mtd` to retrieve a set of unknown parameter (`par_init`) with a `forward_model` and `objective_fct`.
-SABER allow any number of model input parameter to be fixed (in that case you probably don't need inversion, you already know everything !). This feature allow to play with different level of inversion uncertainty. The more unknown parameter, the more uncertain the results!
-
-The unknown parameter are passed with the `par_init` argument.
-The known parameter are passed with the `par_fixed` argument.
-
+Using uniform prior for ease of illustration (pass NULL in bayesconfig prior). Only retrieved opticall deep components.
 
 ```{r}
 par_fixed <- c(
   "water_type" = 2,
   "theta_view" = 0,
-  "theta_sun" = 20
-  #"h_w" = NULL, 
-  #"r_rs_b_saccharina" = NULL, 
-  #"r_rs_b_cca " = NULL, 
-  #"r_rs_b_gravel" = NULL
+  "theta_sun" = 20,
+  "h_w" = NULL,
+  "r_rs_b_saccharina" = NULL,
+  "r_rs_b_cca" = NULL,
+  "r_rs_b_gravel" = NULL
+  #, sd = 0.5
 )
 
-#par_fixed <- bind_rows(test_case, r_b_fraction)
-#par_fixed <- bind_rows(par_fixed, tibble(name = "sd", value = 1))
 
-par_inversed <- c("chl", "a_g_440", "a_g_s", "bb_p_550", "bb_p_gamma", 
-                  "h_w" , "r_rs_b_saccharina" , "r_rs_b_cca", "r_rs_b_gravel",
-                  "sd")
+par_to_inverse = c(#"theta_sun",
+  "chl", "a_g_440","a_g_s",
+  #"a_g_s_d",
+  "bb_p_550", "bb_p_gamma",
 
-res_grad <- inversion_gradient(
-  rrs = rrs_test,
+ # "a_nap_440",  "a_nap_sd",
+
+  # "h_w",  "r_rs_b_saccharina" , "r_rs_b_cca" , "r_rs_b_gravel" ,
+
+  "sd"
+)
+
+lower = c(0.5, 0.1, 0.0008, #0.0002,
+          0.002, 0.2,
+          # 0.5, 0.1, 0.1, 0.1,
+          0.0001
+)
+
+best = c(3, 0.75, 0.017, 0.005, 0.46,
+         #  4, 0.5, 0.1, 0.25,
+         0.1
+)
+
+upper = c(30, 1.5, 0.020, #0.002,
+          0.015, 1,
+          #  12, 1, 1, 1,
+          10
+)
+
+test_inverse = inverse_mcmc(
+  rrs = rrs_vec,
   forward_model = "am03",
-  objective_fct = "log-ll",
-  optim_mtd = "L-BFGS-B",
-  par_inversed  = par_inversed,
-  par_fixed = par_fixed,
-  verbose = F, 
-  lower_b = c(0.1, 0.01, 0.001, 0.001, 0.1, 
-              0.1, 0.1, 0.1, 0.1, 
-                  0.0001), 
-  init_val = c(1, 0.75, 0.017, 0.04, 0.46, 
-               4, 0.5, 0.1, 0.25, 
-                 0.1),
-  upper_b =c(20, 2.5, 0.025, 0.1, 1, 
-             20, 1, 1, 1, 
-                  10) 
-)
-```
-
-Use the retrieved parameter to forward model $(\text{OAC} \to \text{IOP}, R_\text{b}) \to R_\text{rs}$ and compare to input $R_\text{rs}$.
-
-```{r}
-oac_grad <- stats::setNames(res_grad$estimate, res_grad$name)
-
-iop_grad <- iop_from_oac(
-  rrs$wavelength,
-  oac_grad
-)
-
-rrs_grad <- forward_am03(
-  wavelength = rrs$wavelength,
-  iop = iop_grad,
-  water_type = 2,
-  theta_view = 0,
-  theta_sun = 20,
-  #optically_shallow = test_case_vec["optically_shallow"],
-  h_w = test_case_vec["h_w"],
-  r_b = r_b
-)
-
-ply <- plot_ly() %>%
-  add_lines(x = rrs$wavelength, y = rrs$rrs_0m, name = "rrs_input") %>%
-  add_lines(x = rrs_grad$wavelength, y = rrs_grad$rrs_0m, name = "rrs_retrieved")
-
-ply
-```
-
-Trying playing with the initial value of the gradient inversion. When they are closer to the true value, the inversion works almost perfectly, and when they far away ... meh.
-
-### MCMC inversion
-
-Use uniform prior (pass NULL in bayesconfig prior). Only retrieved chl, a_g_440 and bb_p_550.
-
-```{r}
-# nomad_sample <- sample_nomad()
-# chl_prior <- make_prior(nomad_sample$chl, dist = "weibull", name = "chl")
-# ag_prior <- make_prior(nomad_sample$ag443, dist = "weibull", name = "ag_440")
-# # ad_prior <- make_prior(nomad_sample$ad443, dist = "weibull", name = "ad440")
-# bbp_prior <- make_prior(nomad_sample$bbp555, dist = "weibull", name = "bbp_550")
-#
-# priors <- list(chl_prior, ag_prior, bbp_prior)
-#
-# prior_bundle <- make_prior_bundle(
-#   priors = priors,
-#   lower = c(0, 0, 0),
-#   upper = c(30, 5, 0.5)
-# )
-
-likelihood <- objective_factory(
-  model = "am03",
-  objective = "log-ll",
-  rrs_observed = rrs,
-  par_fixed = par_fixed
-)
-
-named_likelihood <- function(par) {
-  names(par) <- c("chl", "a_g_440", "bb_p_550")
-  likelihood(par)
-}
-
-setup <- BayesianTools::createBayesianSetup(
+  par_inversed = par_to_inverse,
   prior = NULL,
-  likelihood = named_likelihood,
-  lower = c(0, 0, 0),
-  upper = c(100, 5, 0.1),
-  names = c("chl", "a_g_440", "bb_p_550"),
-  parallel = FALSE
-)
-
-BayesianTools::checkBayesianSetup(setup)
-
-out <- BayesianTools::runMCMC(
-  bayesianSetup = setup,
-  settings = list(
-    iterations = 10000,
-    burnin = 2000,
-    message = TRUE,
-    nrChains = 1
-  ),
+  lower = lower,
+  best = NULL,
+  upper = upper,
+  par_fixed = par_fixed,
+  iterations = 30000,
+  burnin = 5000,
   sampler = "DEzs"
 )
+print(test_inverse)
+
 ```
 
 ```{r}
-oac_mcmc <- MAP(out)[[1]]
+oac_mcmc <-test_inverse[grep("sd$", names(test_inverse), invert = T)]
 
 iop_mcmc <- iop_from_oac(
-  rrs$wavelength,
+  rrs_vec$wavelength,
   oac_mcmc
 )
 
-rrs_grad <- forward_am03(
+rrs_mcmc <- forward_am03(
   wavelength = wavelength,
-  iop = iop_grad,
+  iop = iop_mcmc,
   water_type = test_case_vec["water_type"],
   theta_view = test_case_vec["theta_view"],
   theta_sun = test_case_vec["theta_sun"],
-  optically_shallow = test_case_vec["optically_shallow"],
-  h_w = test_case_vec["h_w"],
-  r_b = r_b
+  
+  h_w = NULL,
+  r_b = NULL
 )
 
 ply <- plot_ly() %>%
-  add_lines(x = rrs$wavelength, y = rrs$rrs_0m, name = "rrs_input") %>%
-  add_lines(x = rrs_grad$wavelength, y = rrs_grad$rrs_0m, name = "rrs_retrieved")
+  add_lines(x = rrs_vec$wavelength, y = rrs_vec$rrs_0m, name = "rrs_input") %>%
+  add_lines(x = rrs_vec$wavelength, y = rrs_mcmc, name = "rrs_retrieved")
 
 ply
 ```
