@@ -8,8 +8,8 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-# library(SABER)
-devtools::load_all(".")
+ library(SABER)
+#devtools::load_all(".")
 library(plotly)
 library(BayesianTools)
 library(stringr)

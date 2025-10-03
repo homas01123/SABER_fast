@@ -1,6 +1,6 @@
 # S.A.B.E.R (Semi Analytical Bayesian Estimate Retrieval)
 
-A Semi Analytically paramterized aquatic radiative transfer model to primariliy retrieve posterior distributions of Optically Significant Constituents (OSCs), water depth and benthic reflectance from user input of remote sensing reflectance.
+A Semi Analytically parameterized aquatic radiative transfer model to primarily retrieve posterior distributions of Optically Significant Constituents (OSCs), water depth and benthic reflectance from user input of remote sensing reflectance.
 
 Creator and original developer: Soham Mukherjee
 Packaging: Raphael Mabit
@@ -40,7 +40,7 @@ Before installing SABER, ensure you have the following system requirements:
 
 ### Install from GitHub
 
-Since SABER is currently in development, install directly from GitHub using `devtools`:
+SABER can be installed on the local machine from GitHub using `devtools`:
 
 ```r
 # Install devtools if you haven't already
@@ -64,7 +64,6 @@ devtools::install_github("homas01123/SABER_fast", dependencies = TRUE)
 install.packages(c("knitr", "rmarkdown", "testthat", "ggplot2", "dplyr", "tidyr", "purrr", "tibble", "readr", "magrittr", "BayesianTools"))
 ```
 
-```
 
 ### Verify Installation
 
@@ -98,9 +97,7 @@ build_cache(seq(400, 700, by = 10))
 - If compilation fails, check that all system requirements are met
 - For missing saber-lib, refer to the [standalone branch](https://github.com/homas01123/SABER_fast/tree/standalone) for applications
 
-## Outline of the mathemtical and physics-based formulation
 
-The user is refered to the publication ``A Semi-Analytical Bayesian Estimate Retrieval (SABER) algorithm for the inversion of Remote Sensing Reflectance in optically deep and shallow waters'' (htt[...]
 
 ## Outline of the code structure
 
@@ -120,5 +117,5 @@ The three registry currently in use are `.input_preparer_registry`, `.forward_mo
 
 ## Running the code
 
-Please refer to the "forward_inverse_basics" vignette for introduction on forward and inverse modeling using SABER.
+Please refer to the [forward_inverse_basics]("./vignettes/forward_inverse_basics.Rmd") vignette for introduction on forward and inverse modeling using SABER.
 

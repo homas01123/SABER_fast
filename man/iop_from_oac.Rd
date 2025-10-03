@@ -10,13 +10,9 @@ iop_from_oac(wavelength, par)
 \arguments{
 \item{wavelength}{Numeric vector of wavelengths \link{nm}}
 
-\item{par}{a vector with name {chl, a_g_440, a_nap_440, bb_p_550}
+\item{par}{a vector with name {chl, a_g_440, a_nap_440, bb_p_550}, Optionally, provide manual for (and/or) a_g, a_nap, bb_p slope with names {a_g_s_g, a_g_s_d, a_nap_s, bb_p_gamma}.
 Total IOP will be computed with the combination of oac you provide.
-If you don't provide any, the returned value will be equal to the pure water IOP.
-Optionally, provide manual for (and/or) a_g, a_nap, bb_p slope with names {a_g_s_g, a_g_s_d, a_nap_s, bb_p_gamma}}
-
-\item{rrs}{optionnal, a tibble with columns {wavelength, rrs} used for
-parametric retrieval of a_g and bb slope (if manual slope are not provided).}
+If you don't provide any, the returned value will be equal to the pure water IOP.}
 }
 \description{
 iop_from_oac

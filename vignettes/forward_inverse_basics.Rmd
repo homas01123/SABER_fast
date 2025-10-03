@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-load_all()
+#load_all()
 library(SABER)
 library(readr)
 library(dplyr)
@@ -23,16 +23,15 @@ library(plotly)
 library(BayesianTools)
 ```
 
-This vignette teaches the basics of forward and inverse radiative tranfer modelling with SABER.
+This vignette teaches the basics of forward and inverse radiative transfer modelling with SABER.
 
 ## Forward modelling
 
-We'll use the Albert & Mobley 2003 (`"am03"`) forward model to generate a $R_\text{rs}$ spectrum from Optically Active Constituent (OAC). To compute the $R_\text{rs}$, a forward model needs the IOP. If we have spectral IOP we could pass them directly to the forward model. Instead, here, we will compute the IOP from some OAC values. 
+The SA paramterized forward model by Albert & Mobley 2003 (`"am03"`) is used here as the base RT forward model (tweaked for spectral slopes and bio-optical formulation) to generate spectral $R_\text{rs}$ from user-driven Optically Active Constituent (OAC). The forward modeling is seperated into two steps, first the OAC are converted to Inherent Optical Properties (IOP), then the IOP (and benthic information: $H$ and $R_\mathrm{B}$, where applicable) are used as input to the RT model to generate $R_\text{rs}$.
 
 ### Computing the IOP from the OAC
 
-The first step is to choose a bio-optical model to compute the Inherent Optical Proprieties (IOP) from the OAC. To do that, SABER offer the `iop_from_oac` function. In this case we pass the spectral slope with the OAC. *Details different options*
-The `verbose = T` argument will create plots of the retrieved spectral IOP, this way we can quickly check what's going on. 
+The first step is to choose a bio-optical model to compute the Inherent Optical Proprieties (IOP) from the OAC. To do that, SABER offer the `iop_from_oac` function. In this case we pass the spectral slopes with the OAC in a named vector `par`. *Details different options*
 
 ```{r}
 wavelength <- seq(400, 700, 5)
@@ -52,16 +51,28 @@ oac_vec <- stats::setNames(oac$value, oac$name)
 iop <- iop_from_oac(
   wavelength,
   par = oac_vec
-  #rrs = NULL,
-  #optically_shallow = T,
-  #verbose = T
 )
+
+iop_vec = tibble(wavelength = wavelength) %>%
+  bind_cols(as_tibble(iop))
+
+ply <- plot_ly(iop_vec) %>%
+  add_lines(
+    x = ~wavelength,
+    y = ~a,
+    name = "at_w"
+  ) %>%
+  add_lines(
+    x = ~wavelength,
+    y = ~bb,
+    name = "bb"
+  ) 
+ply
 ```
 
 ### Runing the forward model
 
-To run the forward model we will create a list that contains the inputs the model need. 
-The model we use here is Albert & Mobley 2003 (`"am03"`).
+Next, the obtained spectral IOPs are input into the SA RT model (`"am03"`) to generate the $R_\text{rs}$. 
 
 ```{r}
 test_case <- tibble(
@@ -78,7 +89,7 @@ rrs <- forward_am03(
   theta_view = test_case_vec["theta_view"],
   theta_sun = test_case_vec["theta_sun"],
 
-  h_w = NULL,
+  h_w = NULL, #optically deep case
   r_b = NULL
 )
 rrs_vec <- tibble(
@@ -94,17 +105,27 @@ ply <- plot_ly(rrs_vec) %>%
 
 ply
 ```
+### Benthic reflectance
+
+SABER has complete support for optically shallow waters, where the benthic reflectance ($R_\mathrm{B}$) plays a crucial role. The $R_\mathrm{B}$ in SABER is calculated as a aerial fraction constrained sum of three pure benthic class spectra. The $R_\mathrm{B}$ can be calculated using `compute_r_rs_b_lmm` function in SABER.
+
+```{r}
+# r_frac <- c("r_rs_b_saccharina" = 0.54, "r_rs_b_cca" = 0.136, "r_rs_b_gravel" = 0.015)
+r_frac <- c("r_rs_b_saccharina" = 1)#0.265, "r_rs_b_cca" = 0.011, "r_rs_b_gravel" = 0.029)
+
+r_rs_b_saccharina <- compute_r_rs_b_lmm(r_frac)
+
+plot_ly(x = wavelength) %>%
+  add_lines(y = r_rs_b_saccharina)
+```
 
 ## Inversion
 
-The inversion process consist in finding the optimal input parameter to a forward model, that will provide the best solution to an objective function. An objective function compares the observed $R_\text{rs}$ with the modeled $\hat{R_\text{rs}}$. Objective function includes residual sum of square (rss), log-likelihood (log-ll) or the spectral error index of Lee 1999 (lee99).
-
-Two categories of inversion are implemented in SABER, gradient based, and markov-chain monte-carlo (mcmc).
-In the following section we will demonstrate the use of gradient based inversion with augmented lagrangian optimization.
+The inversion process consist in finding the optimal parameter vector that can be feed to the forward model, giving approximately exact $R_\mathrm{rs}$ used as input. Here, we have used a Bayesian framework to perform the inversion, where the posterior distribution of the parameters is sampled using  Markov-Chain Monte-Carlo (MCMC) sampling, informed with a proper prior and model likelihood.
 
 ### MCMC inversion
 
-Using uniform prior for ease of illustration (pass NULL in bayesconfig prior). Only retrieved opticall deep components.
+The following chunk shows an illustration of a SABER inversion using uniform prior (pass `NULL` in prior) and Gaussian likelihood. user-defined priors and random samplers can be obtained with `make_prior` and `make_prior_bundle` functions and then can be passed to the `inverse_mcmc` function. For rest of the arguements, the parameters to be inverted are passed in `par_to_inverse`, while the known parameters are fixed to known values in `par_fixed`. The boundaries of the prior/posterior are defined in `lower` and `upper`. The MCMC is run for 30,000 iterations with a burn-in of 5,000. The Differential Evolution sampler with snooker update (`"DEzs"`) is used here, but other samplers from the `BayesianTools` package can be used as well. 
 
 ```{r}
 par_fixed <- c(
@@ -164,6 +185,9 @@ test_inverse = inverse_mcmc(
 print(test_inverse)
 
 ```
+### Checking inversion with AOP reconstruction using inversed parameters
+
+The SABER inversion estimated parameters are plugged into the `iop_from_oac` function and then into `forward_am03` function to simulate the $R_\mathrm{rs}$ and compare with the input one.
 
 ```{r}
 oac_mcmc <-test_inverse[grep("sd$", names(test_inverse), invert = T)]
