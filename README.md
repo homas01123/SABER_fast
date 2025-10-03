@@ -117,5 +117,5 @@ The three registry currently in use are `.input_preparer_registry`, `.forward_mo
 
 ## Running the code
 
-Please refer to the [forward_inverse_basics]("./vignettes/forward_inverse_basics.Rmd") vignette for introduction on forward and inverse modeling using SABER.
+Please refer to the [forward_inverse_basics](https://github.com/homas01123/SABER_fast/blob/standalone/vignettes/forward_inverse_basics.Rmd) vignette for introduction on forward and inverse modeling using SABER.
 
