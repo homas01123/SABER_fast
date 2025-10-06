@@ -215,7 +215,7 @@ The SABER inversion estimated parameters are plugged into the `iop_from_oac` fun
 
 ```{r}
 #AOP reconstruction with MCMC inversed parameters
-oac_mcmc <-test_inverse[grep("sd$", names(test_inverse_mcmc), invert = T)]
+oac_mcmc <-test_inverse_mcmc[grep("sd$", names(test_inverse_mcmc), invert = T)]
 
 iop_mcmc <- iop_from_oac(
   rrs_vec$wavelength,
