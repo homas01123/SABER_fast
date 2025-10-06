@@ -121,27 +121,31 @@ plot_ly(x = wavelength) %>%
 
 ## Inversion
 
-The inversion process consist in finding the optimal parameter vector that can be feed to the forward model, giving approximately exact $R_\mathrm{rs}$ used as input. Here, we have used a Bayesian framework to perform the inversion, where the posterior distribution of the parameters is sampled using  Markov-Chain Monte-Carlo (MCMC) sampling, informed with a proper prior and model likelihood.
+The inversion process consist in finding the optimal parameter vector that can be feed to the forward model, giving approximately exact $R_\mathrm{rs}$ used as input. Here, we have used two different approaches for the inversion: 
 
-### MCMC inversion
+1. A deterministic approach based on gradient-based/Newtonian optimization (L-BFGS-B/CG, etc... method) to minimize an objective function (log-likelihood default here).
 
-The following chunk shows an illustration of a SABER inversion using uniform prior (pass `NULL` in prior) and Gaussian likelihood. user-defined priors and random samplers can be obtained with `make_prior` and `make_prior_bundle` functions and then can be passed to the `inverse_mcmc` function. For rest of the arguements, the parameters to be inverted are passed in `par_to_inverse`, while the known parameters are fixed to known values in `par_fixed`. The boundaries of the prior/posterior are defined in `lower` and `upper`. The MCMC is run for 30,000 iterations with a burn-in of 5,000. The Differential Evolution sampler with snooker update (`"DEzs"`) is used here, but other samplers from the `BayesianTools` package can be used as well. 
+2.a Bayesian framework to perform the inversion, where the posterior distribution of the parameters is sampled using  Markov-Chain Monte-Carlo (MCMC) sampling, informed with a proper prior and model likelihood.
+
+### Deterministic inversion
+
+The following chunk shows an illustration of a SABER inversion using gradient-based optimization method (L-BFGS-B) to minimize a log-likelihood objective function. The parameters to be inverted are passed in `par_to_inverse`, while the known parameters are fixed to known values in `par_fixed`. The boundaries of the prior/posterior are defined in `lower_b` and `upper_b`. The initial values for the parameters to be inverted are passed in `init_val`. 
 
 ```{r}
 par_fixed <- c(
   "water_type" = 2,
   "theta_view" = 0,
   "theta_sun" = 20,
+  #"a_g_s" = 0.017,
   "h_w" = NULL,
   "r_rs_b_saccharina" = NULL,
   "r_rs_b_cca" = NULL,
   "r_rs_b_gravel" = NULL
-  #, sd = 0.5
 )
 
 
-par_to_inverse = c(#"theta_sun",
-  "chl", "a_g_440","a_g_s",
+par_to_inverse <- c(#"theta_sun",
+  "chl", "a_g_440", "a_g_s",
   #"a_g_s_d",
   "bb_p_550", "bb_p_gamma",
 
@@ -152,24 +156,45 @@ par_to_inverse = c(#"theta_sun",
   "sd"
 )
 
-lower = c(0.5, 0.1, 0.0008, #0.0002,
+lower = c(0.5, 0.1, 0.005, #0.0002,
           0.002, 0.2,
           # 0.5, 0.1, 0.1, 0.1,
           0.0001
 )
 
-best = c(3, 0.75, 0.017, 0.005, 0.46,
+best = c(3, 0.75, 0.017, #0.0015,
+        0.005, 0.46,
          #  4, 0.5, 0.1, 0.25,
          0.1
 )
 
-upper = c(30, 1.5, 0.020, #0.002,
+upper = c(30, 1.5, 0.022, #0.0025,
           0.015, 1,
           #  12, 1, 1, 1,
           10
 )
 
-test_inverse = inverse_mcmc(
+test_inverse_grad <- inverse_gradient(
+  rrs = rrs_vec,
+  forward_model = "am03",
+  objective_fct = "log-ll",
+  optim_mtd = "L-BFGS-B",
+  par_inversed = par_to_inverse,
+  par_fixed = par_fixed,
+  lower_b  = lower,
+  init_val = best,
+  upper_b  = upper,
+  verbose = TRUE
+)
+print(test_inverse_grad)
+```
+
+### MCMC inversion
+
+The following chunk shows an illustration of a SABER inversion using uniform prior (pass `NULL` in prior) and Gaussian likelihood. user-defined priors and random samplers can be obtained with `make_prior` and `make_prior_bundle` functions and then can be passed to the `inverse_mcmc` function. For rest of the arguements, the parameters to be inverted are passed in `par_to_inverse`, while the known parameters are fixed to known values in `par_fixed`. The boundaries of the prior/posterior are defined in `lower` and `upper`. The MCMC is run for 30,000 iterations with a burn-in of 5,000. The Differential Evolution sampler with snooker update (`"DEzs"`) is used here, but other samplers from the `BayesianTools` package can be used as well. 
+
+```{r}
+test_inverse_mcmc = inverse_mcmc(
   rrs = rrs_vec,
   forward_model = "am03",
   par_inversed = par_to_inverse,
@@ -182,15 +207,15 @@ test_inverse = inverse_mcmc(
   burnin = 5000,
   sampler = "DEzs"
 )
-print(test_inverse)
-
+print(test_inverse_mcmc)
 ```
 ### Checking inversion with AOP reconstruction using inversed parameters
 
 The SABER inversion estimated parameters are plugged into the `iop_from_oac` function and then into `forward_am03` function to simulate the $R_\mathrm{rs}$ and compare with the input one.
 
 ```{r}
-oac_mcmc <-test_inverse[grep("sd$", names(test_inverse), invert = T)]
+#AOP reconstruction with MCMC inversed parameters
+oac_mcmc <-test_inverse[grep("sd$", names(test_inverse_mcmc), invert = T)]
 
 iop_mcmc <- iop_from_oac(
   rrs_vec$wavelength,
@@ -208,9 +233,29 @@ rrs_mcmc <- forward_am03(
   r_b = NULL
 )
 
+#AOP reconstruction with deterministic inversed parameters
+oac_grad <-test_inverse_grad$estimate[grep("sd$", (test_inverse_grad$name), invert = T)]
+
+iop_grad <- iop_from_oac(
+  rrs_vec$wavelength,
+  oac_grad
+)
+
+rrs_grad <- forward_am03(
+  wavelength = wavelength,
+  iop = iop_grad,
+  water_type = test_case_vec["water_type"],
+  theta_view = test_case_vec["theta_view"],
+  theta_sun = test_case_vec["theta_sun"],
+  
+  h_w = NULL,
+  r_b = NULL
+)
+
 ply <- plot_ly() %>%
   add_lines(x = rrs_vec$wavelength, y = rrs_vec$rrs_0m, name = "rrs_input") %>%
-  add_lines(x = rrs_vec$wavelength, y = rrs_mcmc, name = "rrs_retrieved")
+  add_lines(x = rrs_vec$wavelength, y = rrs_mcmc, name = "rrs_retrieved_mcmc") %>%
+  add_lines(x = rrs_vec$wavelength, y = rrs_grad, name = "rrs_retrieved_grad")
 
 ply
 ```

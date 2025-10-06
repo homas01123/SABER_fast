@@ -1,34 +1,22 @@
-#' Perform inversion based on various optimization methods.
-#' Allow for unconstrained inversion of chl [mg/m^-3], ag_440 [m^-1],
-#' bbp_550 [m^-1], and in optically shallow waters h_w [m],
-#' and bottom reflectance fraction. Optionally, can perform constrained
-#' inversion by providing parameters in `fixed_par` instead of `par_init`.
+#' Perform deterministic inversion based on Gradient-based/Newtown-based optimization methods.
 #'
 #' @author Soham Mukherjee, Raphael Mabit
 #'
+#' @param rrs A tibble with the remote sensing reflectance data.
 #' @param forward_model c("am03", "lee98")
 #' @param objective_fct c("log-ll", "SSR", "lee99") SSR is not implemented in the code
 #' @param optim_mtd c("nelder-mead", "BFGS", "CG", "L-BFGS-B", "sann", "brent","levenberg-marqardt", "auglag")
-#' @param par_init a tibble with the initial parameter to be inverted.
-#'  For best results, can be estimated with `pre_fit_inversion`.
-#'  \describe{
-#'    \item{chl}{chlorophyl-a concentration in [mg/m^3]}
-#'    \item{ag_440}{CDOM absorption [m^-1] at 440 nm}
-#'    \item{bbp_550}{particulate backscattering [m^-1] at 550 nm}
-#'    \item{h_w}{watercolumn height above the bottom [m]}
-#'    \item{rb_*}{fraction of end-member bottom reflectance class}
-#'    \item{sd}{Optional, standard deviaton of the population for `objective_fct = "log-ll"`}
-#'  }
-#' @param fixed_par Optional, a tibble with the same columns as par_init.
-#'  Parameter defined here will be considered known, hence not retrieved during
-#'  optimization. If defined here they must not be defined in `par_init`.
-#' @param lower_b Optional, lower boundary for `optim_mtd = "L-BFGS-B"`.
-#' If not provided will be calculated in `parse_inverse_parameter`
-#' @param upper_b Optional, same as `lower_b`.
-#' @param verbose guess
+#' @param par_inversed a tibble with the initial parameter to be inverted.
+#' @param par_fixed a tibble with parameter considered known, hence not retrieved during
+#'  optimization. If defined here they must not be defined in `par_inversed`.
+#' @param lower_b lower boundary for `optim_mtd = "L-BFGS-B"`.
+#' If not provided will be calculated in `parse_inverse_parameter`.
+#' @param init_val Initial values for parameters to be inverted.
+#' @param upper_b same as `lower_b` but for maximum possible values..
+#' @param verbose Boolean, if TRUE prints additional information
 #'
 #' @export
-inversion_gradient <- function(
+inverse_gradient <- function(
     rrs,
     forward_model,
     objective_fct,
@@ -48,7 +36,8 @@ inversion_gradient <- function(
     objective = objective_fct,
     rrs_observed = rrs,
     par_fixed = par_fixed,
-    par_inversed = par_inversed
+    par_inversed = par_inversed,
+    minimize = TRUE
   )
 
   # Instantiate initial values
@@ -77,7 +66,11 @@ inversion_gradient <- function(
       method = optim_mtd,
       lower = lower_b,
       upper = upper_b,
-      control = list(parscale = parscale)
+      control = list(
+        parscale = parscale,
+        fnscale = 1,  # Since we're minimizing
+        maxit = 1000
+      )
     )
   }
 
@@ -139,11 +132,13 @@ inversion_gradient <- function(
   if (optim_mtd == "auglag") {
     hessian_inverse <- optim_result$hessian
   } else {
-    hessian_inverse <- numDeriv::hessian(
+    # For standard errors, we need Hessian of POSITIVE log-likelihood
+    # Since minimization_fct returns negative log-likelihood, negate the Hessian
+    hessian_neg_ll <- numDeriv::hessian(
       x = optim_result$par,
-      func = minimization_fct # ,
-      # data=obsdata
+      func = minimization_fct
     )
+    hessian_inverse <- -hessian_neg_ll  # Negate to get Hessian of positive log-likelihood
   }
 
   if (verbose) {
@@ -156,7 +151,7 @@ inversion_gradient <- function(
   param_estimate <- optim_result$par
 
   param_sd <- tryCatch({
-    sqrt(diag(solve(hessian.inverse)))}, #solve for diagonal elements to get sd
+    sqrt(diag(solve(hessian_inverse)))}, #solve for diagonal elements to get sd
     error = myFun
   )
 

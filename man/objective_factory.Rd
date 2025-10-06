@@ -2,14 +2,15 @@
 % Please edit documentation in R/objective_factory.R
 \name{objective_factory}
 \alias{objective_factory}
-\title{Make objective function}
+\title{Make objective function from forward model and objective}
 \usage{
 objective_factory(
   model,
   objective,
   rrs_observed,
   par_inversed,
-  par_fixed = NULL
+  par_fixed = NULL,
+  minimize = FALSE
 )
 }
 \arguments{
@@ -20,10 +21,12 @@ objective_factory(
 \item{rrs_observed}{Observed Rrs data}
 
 \item{par_fixed}{Named list or data frame of fixed parameters}
+
+\item{minimize}{Logical, if TRUE returns negative objective for minimization}
 }
 \value{
 A function returning the model objective/likelihood to be used in an optimization process
 }
 \description{
-Make objective function
+Make objective function from forward model and objective
 }

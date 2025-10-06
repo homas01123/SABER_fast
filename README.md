@@ -2,8 +2,8 @@
 
 A Semi Analytically parameterized aquatic radiative transfer model to primarily retrieve posterior distributions of Optically Significant Constituents (OSCs), water depth and benthic reflectance from user input of remote sensing reflectance.
 
-Creator and original developer: Soham Mukherjee
-Packaging: Raphael Mabit
+Creator and OG developer: Soham Mukherjee || 
+Packaging and code optimization: Raphael Mabit || 
 Maintenance: Soham Mukherjee
 
 ## Outline of the mathemtical and physics-based formulation
@@ -18,10 +18,10 @@ The code is written with a functional approach. The "business" logic
 (the low level functions) are written in file names starting with (`fct_*`),
 more generic function are written under (`utils_*`) files. The `fct_*` files usually stores procedures for the low-level computations, that refer to `C` written functions (or its compiled objects) inside the `src`.
 
-The central piece of code that stitches together the forward models with the objective function is `objective_factory` high level function.
-It allows to easily combine any forward model with any objective functions, even those that a user might add.
+The central piece of code that stitches together the forward models with the objective function (Likelihood in MCMC) is `objective_factory` high level function.
+It allows to easily combine any forward model with any objective/likelihood functions, even those that a user might add.
 
-For users to add their own forward models and objectives function, we adopted the use of registries.
+For users to add their own forward models and objectives function, we adopted the use of registries (see `registry.R`).
 A registry is an environment in which specific function are stored and can
 be retrieved by name in the higher level function arguments.
 The three registry currently in use are `.input_preparer_registry`, `.forward_model_registry`, `.objective_function_registry`.
@@ -35,7 +35,6 @@ Before installing SABER, ensure you have the following system requirements:
 
 - **R** (>= 3.5.0)
 - **pkg-config** 
-- **saber-lib** (>= 0.1.0) - C library for fast computations
 - **Rtools** (Windows users) or appropriate C++ compiler
 
 ### Install from GitHub
@@ -95,25 +94,8 @@ build_cache(seq(400, 700, by = 10))
 
 **Common Issues:**
 - If compilation fails, check that all system requirements are met
-- For missing saber-lib, refer to the [standalone branch](https://github.com/homas01123/SABER_fast/tree/standalone) for applications
+- For in-built C code support, make sure to refer to the [standalone branch](https://github.com/homas01123/SABER_fast/tree/standalone) for applications
 
-
-
-## Outline of the code structure
-
-This package follow the recommendations of https://r-pkgs.org/ and the tidyverse style guide https://style.tidyverse.org/.
-
-The code is written with a functional approach. The "business" logic
-(the low level functions) are written in file names starting with (`fct_*`),
-more generic function are written under (`utils_*`) files. The `fct_*` files usually stores procedures for the low-level computations, that refer to `C` written functions (or its compiled objects)[...]
-
-The central piece of code that stitches together the forward models with the objective function is `objective_factory` high level function.
-It allows to easily combine any forward model with any objective functions, even those that a user might add.
-
-For users to add their own forward models and objectives function, we adopted the use of registries.
-A registry is an environment in which specific function are stored and can
-be retrieved by name in the higher level function arguments.
-The three registry currently in use are `.input_preparer_registry`, `.forward_model_registry`, `.objective_function_registry`.
 
 ## Running the code
 

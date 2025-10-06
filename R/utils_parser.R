@@ -2,12 +2,12 @@
 #'
 #' take tibbles for non water absorption and backscattering
 #'
-#' @author Raphael Mabit
+#' @author Raphael Mabit, Soham Mukherjee
 #'
 #' @param a tibble with columns {a, wavelength}
 #' @param bb tibble with columns {bb, wavelength}
-#' @param wavelength_out a vector with the requested interpolation wavelength
-#' @param plot bollean, produce input and interpolated IOPs plot
+#' @param wavelength a vector with the requested interpolation wavelength
+#' @param verbose Boolean, produce input and interpolated IOPs plot
 #'
 #' @returns A tibble with columns {wavelength, a, bb}
 #'
@@ -76,8 +76,8 @@ parse_inverse_parameter <- function(
   if (optim_mtd == "L-BFGS-B" & is.null(lower_b)) {
     lower_b <- dplyr::case_when(
       par_df$name %in% c("chl", "a_g_440", "bb_p_550") ~ par_df$value - 0.8 * par_df$value,
-      par_df$name == "h_w" ~ 1,
-      stringr::str_detect(par_df$name, "^rb_") ~ 0,
+      par_df$name == "h_w" ~ 0.5,
+      stringr::str_detect(par_df$name, "^rb_") ~ 0.01,
       par_df$name == "sd" ~ 1e-5,
       TRUE ~ NA_real_
     )

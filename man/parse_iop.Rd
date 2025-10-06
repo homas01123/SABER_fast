@@ -11,9 +11,9 @@ parse_iop(a, bb, wavelength, verbose = F)
 
 \item{bb}{tibble with columns {bb, wavelength}}
 
-\item{wavelength_out}{a vector with the requested interpolation wavelength}
+\item{wavelength}{a vector with the requested interpolation wavelength}
 
-\item{plot}{bollean, produce input and interpolated IOPs plot}
+\item{verbose}{Boolean, produce input and interpolated IOPs plot}
 }
 \value{
 A tibble with columns {wavelength, a, bb}
@@ -22,5 +22,5 @@ A tibble with columns {wavelength, a, bb}
 take tibbles for non water absorption and backscattering
 }
 \author{
-Raphael Mabit
+Raphael Mabit, Soham Mukherjee
 }

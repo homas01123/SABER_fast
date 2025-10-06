@@ -2,8 +2,8 @@
 
 export(compute_r_rs_b_lmm)
 export(forward_am03)
+export(inverse_gradient)
 export(inverse_mcmc)
-export(inversion_gradient)
 export(iop_from_oac)
 export(list_forward_models)
 export(list_input_preparer)
