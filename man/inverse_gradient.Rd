@@ -40,6 +40,9 @@ If not provided will be calculated in \code{parse_inverse_parameter}.}
 
 \item{verbose}{Boolean, if TRUE prints additional information}
 }
+\value{
+A named vector with the maximum likelihood estimates and their standard deviations.
+}
 \description{
 Perform deterministic inversion based on Gradient-based/Newtown-based optimization methods.
 }

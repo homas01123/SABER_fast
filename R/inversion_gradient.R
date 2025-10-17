@@ -14,6 +14,7 @@
 #' @param init_val Initial values for parameters to be inverted.
 #' @param upper_b same as `lower_b` but for maximum possible values..
 #' @param verbose Boolean, if TRUE prints additional information
+#' @return A named vector with the maximum likelihood estimates and their standard deviations.
 #'
 #' @export
 inverse_gradient <- function(
@@ -87,15 +88,32 @@ inverse_gradient <- function(
   }
 
   if (optim_mtd == "levenberg-marqardt") {
-    # TODO: Does not support bounds, will break when chl becomes negative !
+    # Note: Does not support bounds directly
 
     lm_result <- marqLevAlg::marqLevAlg(
       b = par,
       fn = minimization_fct,
+      minimize = TRUE,  # Explicitly set minimize flag
       print.info = F
     )
 
-    optim_result <- tibble("par" = lm_result$b)
+    n_params <- length(par)
+    # Fill in the lower triangular part from the vector
+    varcov_matrix[lower.tri(varcov_matrix, diag = TRUE)] <- lm_result$v
+
+    # Make it symmetric by copying lower triangle to upper triangle
+    varcov_matrix[upper.tri(varcov_matrix)] <- t(varcov_matrix)[upper.tri(varcov_matrix)]
+
+    # Create optim_result structure compatible with other methods
+    optim_result <- list(
+      par = lm_result$b,
+      value = lm_result$fn.value,
+      convergence = ifelse(lm_result$istop == 1, 0, 1),  # 0 = success, 1 = failure
+      message = lm_result$message,
+
+      # Store variance-covariance matrix for uncertainty calculation
+      varcov = varcov_matrix
+    )
   }
 
   if (optim_mtd == "auglag") {
@@ -131,6 +149,8 @@ inverse_gradient <- function(
   # Calculate hessian matrix for var-covar matrix
   if (optim_mtd == "auglag") {
     hessian_inverse <- optim_result$hessian
+  } else if (optim_mtd == "levenberg-marqardt") {
+    hessian_inverse <- optim_result$varcov
   } else {
     # For standard errors, we need Hessian of POSITIVE log-likelihood
     # Since minimization_fct returns negative log-likelihood, negate the Hessian
@@ -138,7 +158,7 @@ inverse_gradient <- function(
       x = optim_result$par,
       func = minimization_fct
     )
-    hessian_inverse <- -hessian_neg_ll  # Negate to get Hessian of positive log-likelihood
+    hessian_inverse <- hessian_neg_ll  # Negate to get Hessian of positive log-likelihood
   }
 
   if (verbose) {
@@ -151,8 +171,16 @@ inverse_gradient <- function(
   param_estimate <- optim_result$par
 
   param_sd <- tryCatch({
-    sqrt(diag(solve(hessian_inverse)))}, #solve for diagonal elements to get sd
-    error = myFun
+    # Check for singular matrix
+    if (abs(det(hessian_inverse)) < 1e-5) {
+      warning("Hessian is nearly singular - using pseudoinverse")
+      varcov <- MASS::ginv(hessian_inverse)  # Generalized inverse
+    } else {
+      varcov <- solve(hessian_inverse)
+    }
+    sqrt(abs(diag(varcov)))  # Use abs() to handle numerical errors
+  },
+  error = myFun
   )
 
   # param_sd <- tryCatch(
@@ -169,14 +197,23 @@ inverse_gradient <- function(
       paste0("\033[0;31m", "Failed to calculate diagonal of hessian from
              high degree of correlation, coerce to NA", "\033[0m", "\n")
     )
+    param_sd <- rep(NA, length(param_estimate))
   }
 
-  # Maximum Likelihood Estimates
-  mle <- tibble(
-    "name" = par_inversed,
-    "estimate" = param_estimate,
-    "sd" = param_sd
+  # Maximum Likelihood Estimates - Convert to named vector format like inverse_mcmc
+  param_names <- c(par_inversed, paste0(par_inversed, "_sd"))
+
+  par_estimates <- stats::setNames(
+    c(param_estimate, param_sd),
+    param_names
   )
+
+  # # Maximum Likelihood Estimates
+  # mle <- tibble(
+  #   "name" = par_inversed,
+  #   "estimate" = param_estimate,
+  #   "sd" = param_sd
+  # )
 
   if (verbose) {
     if (optim_result$convergence == 0) {
@@ -192,7 +229,7 @@ inverse_gradient <- function(
     # return(list(mle, "convergence"= convergence))
   }
 
-  return(mle)
+  return(par_estimates)
 }
 
 
