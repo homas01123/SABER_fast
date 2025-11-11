@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
-#load_all()
+#load_all(".")
 library(SABER)
 library(readr)
 library(dplyr)
@@ -34,7 +34,12 @@ The SA paramterized forward model by Albert & Mobley 2003 (`"am03"`) is used her
 The first step is to choose a bio-optical model to compute the Inherent Optical Proprieties (IOP) from the OAC. To do that, SABER offer the `iop_from_oac` function. In this case we pass the spectral slopes with the OAC in a named vector `par`. *Details different options*
 
 ```{r}
-wavelength <- seq(400, 700, 5)
+wavelength <- seq(401, 749, 5)
+
+# Select benthic classes FIRST (before building cache)
+list_benthic_classes()
+select_benthic_classes(c("Sand_2019", "Eelgrass_2019", "Mud_2019"))
+
 # Without manual slope
 # oac <- tibble(
 #   name = c("chl", "a_g_440", "bb_p_550"),
@@ -60,14 +65,26 @@ ply <- plot_ly(iop_vec) %>%
   add_lines(
     x = ~wavelength,
     y = ~a,
-    name = "at_w"
+    name = "a_tot"
   ) %>%
   add_lines(
     x = ~wavelength,
     y = ~bb,
-    name = "bb"
+    name = "bb_tot"
   ) 
 ply
+```
+### Benthic reflectance
+
+SABER has complete support for optically shallow waters, where the benthic reflectance ($R_\mathrm{B}$) plays a crucial role. The $R_\mathrm{B}$ in SABER is calculated as a aerial fraction constrained sum of three pure benthic class spectra. The $R_\mathrm{B}$ can be calculated using `compute_r_rs_b_lmm` function in SABER.
+
+```{r}
+r_frac <- c("r_rs_b_Eelgrass_2019" = 0.25, "r_rs_b_Sand_2019" = 0.55, "r_rs_b_Mud_2019" = 0.20)
+
+r_rs_b <- compute_r_rs_b_lmm(r_frac)
+
+plot_ly(x = wavelength) %>%
+  add_lines(y = r_rs_b)
 ```
 
 ### Runing the forward model
@@ -89,8 +106,8 @@ rrs <- forward_am03(
   theta_view = test_case_vec["theta_view"],
   theta_sun = test_case_vec["theta_sun"],
 
-  h_w = NULL, #optically deep case
-  r_b = NULL
+  h_w = 5, #optically deep case
+  r_b = r_rs_b
 )
 rrs_vec <- tibble(
   wavelength = wavelength,
@@ -105,19 +122,8 @@ ply <- plot_ly(rrs_vec) %>%
 
 ply
 ```
-### Benthic reflectance
 
-SABER has complete support for optically shallow waters, where the benthic reflectance ($R_\mathrm{B}$) plays a crucial role. The $R_\mathrm{B}$ in SABER is calculated as a aerial fraction constrained sum of three pure benthic class spectra. The $R_\mathrm{B}$ can be calculated using `compute_r_rs_b_lmm` function in SABER.
 
-```{r}
-# r_frac <- c("r_rs_b_saccharina" = 0.54, "r_rs_b_cca" = 0.136, "r_rs_b_gravel" = 0.015)
-r_frac <- c("r_rs_b_saccharina" = 1)#0.265, "r_rs_b_cca" = 0.011, "r_rs_b_gravel" = 0.029)
-
-r_rs_b_saccharina <- compute_r_rs_b_lmm(r_frac)
-
-plot_ly(x = wavelength) %>%
-  add_lines(y = r_rs_b_saccharina)
-```
 
 ## Inversion
 
@@ -135,12 +141,12 @@ The following chunk shows an illustration of a SABER inversion using gradient-ba
 par_fixed <- c(
   "water_type" = 2,
   "theta_view" = 0,
-  "theta_sun" = 20,
-  #"a_g_s" = 0.017,
-  "h_w" = NULL,
-  "r_rs_b_saccharina" = NULL,
-  "r_rs_b_cca" = NULL,
-  "r_rs_b_gravel" = NULL
+  "theta_sun" = 20
+  #, "a_g_s" = 0.017,
+  #"h_w" = NULL,
+  #"r_rs_b_saccharina" = NULL,
+  #"r_rs_b_cca" = NULL,
+  #"r_rs_b_gravel" = NULL
 )
 
 
@@ -151,26 +157,26 @@ par_to_inverse <- c(#"theta_sun",
 
  # "a_nap_440",  "a_nap_sd",
 
-  # "h_w",  "r_rs_b_saccharina" , "r_rs_b_cca" , "r_rs_b_gravel" ,
+   "h_w",  "r_rs_b_Eelgrass_2019" , "r_rs_b_Sand_2019", "r_rs_b_Mud_2019" ,
 
   "sd"
 )
 
 lower = c(0.5, 0.1, 0.005, #0.0002,
           0.002, 0.2,
-          # 0.5, 0.1, 0.1, 0.1,
+           0.5, 0.1, 0.1, 0.1,
           0.0001
 )
 
 best = c(3, 0.75, 0.017, #0.0015,
         0.005, 0.46,
-         #  4, 0.5, 0.1, 0.25,
+           4, 0.5, 0.1, 0.25,
          0.1
 )
 
 upper = c(30, 1.5, 0.022, #0.0025,
           0.015, 1,
-          #  12, 1, 1, 1,
+            12, 1, 1, 1,
           10
 )
 
@@ -234,7 +240,7 @@ rrs_mcmc <- forward_am03(
 )
 
 #AOP reconstruction with deterministic inversed parameters
-oac_grad <-test_inverse_grad$estimate[grep("sd$", (test_inverse_grad$name), invert = T)]
+oac_grad <-test_inverse_grad[grep("sd$", (test_inverse_grad), invert = T)]
 
 iop_grad <- iop_from_oac(
   rrs_vec$wavelength,

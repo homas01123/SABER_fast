@@ -166,13 +166,14 @@ inverse_gradient <- function(
     colnames(hessian_inverse) <- par_inversed
     rlang::inform(paste0("\033[0;32m", "#################### VAR-COV HESSIAN MATRIX #########################", "\033[0m", "\n"))
     prmatrix(hessian_inverse)
+    print(paste0("Absolute determinant of Hessian: ", abs(det(hessian_inverse))))
   }
 
   param_estimate <- optim_result$par
 
   param_sd <- tryCatch({
     # Check for singular matrix
-    if (abs(det(hessian_inverse)) < 1e-5) {
+    if (abs(det(hessian_inverse)) < 1e-5 | abs(det(hessian_inverse)) > 1e10) {
       warning("Hessian is nearly singular - using pseudoinverse")
       varcov <- MASS::ginv(hessian_inverse)  # Generalized inverse
     } else {

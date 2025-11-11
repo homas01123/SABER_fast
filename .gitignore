@@ -13,6 +13,18 @@
 # aux file types
 *.png
 *.nc
+*.jpg
+*.pdf
+*.tif
+*.tiff
+*.jp2
+*.jpeg
+*.txt
+*.csv
+*.xml
+*.safe
+*.zip
+*.xlsx
 # auto‑generated binaries / executables
 /examples/**/bernoulli
 */bin/*
