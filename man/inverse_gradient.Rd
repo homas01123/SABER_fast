@@ -14,7 +14,8 @@ inverse_gradient(
   lower_b = NULL,
   init_val = NULL,
   upper_b = NULL,
-  verbose = F
+  verbose = F,
+  return_full_output = FALSE
 )
 }
 \arguments{
@@ -39,9 +40,12 @@ If not provided will be calculated in \code{parse_inverse_parameter}.}
 \item{upper_b}{same as \code{lower_b} but for maximum possible values..}
 
 \item{verbose}{Boolean, if TRUE prints additional information}
+
+\item{return_full_output}{logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)}
 }
 \value{
 A named vector with the maximum likelihood estimates and their standard deviations.
+If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties
 }
 \description{
 Perform deterministic inversion based on Gradient-based/Newtown-based optimization methods.

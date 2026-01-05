@@ -5,7 +5,7 @@
 \alias{.input_preparer_registry}
 \title{Forward model input preparation Registry}
 \format{
-An object of class \code{environment} of length 1.
+An object of class \code{environment} of length 2.
 }
 \usage{
 .input_preparer_registry

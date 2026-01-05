@@ -9,6 +9,7 @@ extern SEXP c_iop_from_oac(SEXP, SEXP);
 extern SEXP c_forward_am03(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP c_load_r_rs_b(SEXP, SEXP);
 extern SEXP c_compute_r_rs_b_lmm(SEXP);
+extern SEXP c_snell_law(SEXP, SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
   {"c_load_pure_water", (DL_FUNC) &c_load_pure_water, 2},
@@ -18,6 +19,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"c_forward_am03", (DL_FUNC) &c_forward_am03, 7},
   {"c_load_r_rs_b", (DL_FUNC) &c_load_r_rs_b, 2},
   {"c_compute_r_rs_b_lmm", (DL_FUNC) &c_compute_r_rs_b_lmm, 1},
+  {"c_snell_law", (DL_FUNC) &c_snell_law, 2},
   {NULL, NULL, 0}
 };
 

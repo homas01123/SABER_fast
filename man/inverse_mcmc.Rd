@@ -15,7 +15,8 @@ inverse_mcmc(
   par_fixed = NULL,
   iterations = 10000,
   burnin = 2000,
-  sampler = "DEzs"
+  sampler = "DEzs",
+  return_full_output = FALSE
 )
 }
 \arguments{
@@ -40,9 +41,12 @@ inverse_mcmc(
 \item{burnin}{number of burnin iterations (default = 2000)}
 
 \item{sampler}{MCMC sampler to be used (default = "DEzs", see BayesianTools documentation for other options)}
+
+\item{return_full_output}{logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)}
 }
 \value{
 numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_g_440 = 0.1, a_g_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
+If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties, mcmc_output
 }
 \description{
 Retrieve optically deep water OSCs and benthic variables from input Rrs and wavelength

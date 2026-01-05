@@ -79,6 +79,32 @@
       r_b = inputs$r_b
     )
   })
+  
+  register_input_preparer("input_am03_sicf", function(par, rrs, par_meta = NULL) {
+    input_am03_sicf(par, rrs, par_meta)
+  })
+  
+  register_forward_model("am03_sicf", function(inputs) {
+    forward_am03_sicf(
+      wavelength = inputs$wavelength,
+      iop = inputs$iop,
+      water_type = inputs$water_type,
+      theta_view = inputs$theta_view,
+      theta_sun = inputs$theta_sun,
+      h_w = inputs$h_w,
+      r_b = inputs$r_b,
+      chl = inputs$chl,
+      a_dg_443 = inputs$a_dg_443,
+      phi_f = inputs$phi_f,
+      include_sicf = inputs$include_sicf,
+      sicf_model = inputs$sicf_model,
+      depth_integration = inputs$depth_integration,
+      lat = inputs$lat,
+      lon = inputs$lon,
+      date_time = inputs$date_time,
+      return_components = inputs$return_components
+    )
+  })
 
   register_objective_function("log-ll", function(modelled, observed, par) {
     log_ll(modelled = modelled, observed = observed, sd = par[["sd"]])

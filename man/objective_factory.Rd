@@ -10,6 +10,7 @@ objective_factory(
   rrs_observed,
   par_inversed,
   par_fixed = NULL,
+  par_meta = NULL,
   minimize = FALSE
 )
 }

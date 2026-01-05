@@ -14,7 +14,9 @@
 #' @param init_val Initial values for parameters to be inverted.
 #' @param upper_b same as `lower_b` but for maximum possible values..
 #' @param verbose Boolean, if TRUE prints additional information
+#' @param return_full_output logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)
 #' @return A named vector with the maximum likelihood estimates and their standard deviations.
+#'         If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties
 #'
 #' @export
 inverse_gradient <- function(
@@ -27,16 +29,41 @@ inverse_gradient <- function(
     lower_b = NULL,
     init_val = NULL,
     upper_b = NULL,
-    verbose = F) {
+    verbose = F,
+    return_full_output = FALSE) {
+      
   rlang::inform(paste0("\033[0;33m", "###################################################################", "\033[0m", "\n"))
   rlang::inform(paste0("\033[0;39m", "########### ALL GOOD THINGS ARE WILD & FREE, LET'S RUN FREE #######", "\033[0m", "\n"))
   rlang::inform(paste0("\033[0;32m", "###################################################################", "\033[0m", "\n"))
+
+  # Auto-add phi_f if using am03_sicf model and phi_f not in par_inversed
+  if (forward_model == "am03_sicf" && !"phi_f" %in% par_inversed) {
+    warning("'phi_f' not in par_inversed when using am03_sicf model. Adding it automatically.")
+    par_inversed <- c(par_inversed, "phi_f")
+    lower_b <- c(lower_b, 0.005)
+    upper_b <- c(upper_b, 0.03)
+    if (!is.null(init_val)) init_val <- c(init_val, 0.02)
+  }
+
+  # Separate numeric and non-numeric parameters from par_fixed
+  par_meta <- NULL
+  if (!is.null(par_fixed)) {
+    # Identify non-numeric metadata parameters
+    meta_params <- c("sicf_model", "depth_integration")
+    meta_names <- intersect(names(par_fixed), meta_params)
+    
+    if (length(meta_names) > 0) {
+      par_meta <- par_fixed[meta_names]
+      par_fixed <- par_fixed[!names(par_fixed) %in% meta_names]
+    }
+  }
 
   minimization_fct <- objective_factory(
     model = forward_model,
     objective = objective_fct,
     rrs_observed = rrs,
     par_fixed = par_fixed,
+    par_meta = par_meta,
     par_inversed = par_inversed,
     minimize = TRUE
   )
@@ -117,7 +144,9 @@ inverse_gradient <- function(
   }
 
   if (optim_mtd == "auglag") {
-    print("Augmented Lagriangian with equality constraints will be used for inversion")
+    if (verbose) {
+      message("Using Augmented Lagrangian with equality constraints for inversion")
+    }
 
     get_fraction_indices <- function(par_names, prefix = "rb_") {
       which(grepl(paste0("^", prefix), par_names))
@@ -164,9 +193,9 @@ inverse_gradient <- function(
   if (verbose) {
     rownames(hessian_inverse) <- par_inversed
     colnames(hessian_inverse) <- par_inversed
-    rlang::inform(paste0("\033[0;32m", "#################### VAR-COV HESSIAN MATRIX #########################", "\033[0m", "\n"))
+    message("\n#################### VAR-COV HESSIAN MATRIX #########################\n")
     prmatrix(hessian_inverse)
-    print(paste0("Absolute determinant of Hessian: ", abs(det(hessian_inverse))))
+    message(paste0("Absolute determinant of Hessian: ", abs(det(hessian_inverse))))
   }
 
   param_estimate <- optim_result$par
@@ -228,6 +257,74 @@ inverse_gradient <- function(
     time_taken <- end.time - start.time
     rlang::inform(glue::glue("time.elapsed: ", time_taken))
     # return(list(mle, "convergence"= convergence))
+  }
+
+  # If using am03_sicf model with full output, compute optical properties
+  if (forward_model == "am03_sicf" && return_full_output) {
+    
+    # Extract parameter estimates (without _sd suffix)
+    par_names <- par_inversed
+    par_values <- par_estimates[par_names]
+    
+    # Combine with fixed parameters
+    # Convert par_fixed from list to numeric vector if needed
+    if (!is.null(par_fixed)) {
+      if (is.list(par_fixed)) {
+        par_fixed_vec <- unlist(par_fixed)
+        # Preserve names from list
+        if (is.null(names(par_fixed_vec))) {
+          names(par_fixed_vec) <- names(par_fixed)
+        }
+      } else {
+        par_fixed_vec <- par_fixed
+      }
+      par_complete <- c(par_values, par_fixed_vec)
+      par_complete <- par_complete[order(names(par_complete))]
+    } else {
+      par_complete <- par_values
+    }
+    
+    # Prepare inputs
+    inputs <- input_am03_sicf(par_complete, rrs, par_meta)
+    inputs$return_components <- TRUE
+    
+    # Run forward model
+    forward_result <- forward_am03_sicf(
+      wavelength = inputs$wavelength,
+      iop = inputs$iop,
+      water_type = inputs$water_type,
+      theta_view = inputs$theta_view,
+      theta_sun = inputs$theta_sun,
+      h_w = inputs$h_w,
+      r_b = inputs$r_b,
+      chl = inputs$chl,
+      a_dg_443 = inputs$a_dg_443,
+      phi_f = inputs$phi_f,
+      include_sicf = inputs$include_sicf,
+      lat = inputs$lat,
+      lon = inputs$lon,
+      date_time = inputs$date_time,
+      sicf_model = inputs$sicf_model,
+      depth_integration = inputs$depth_integration,
+      return_components = TRUE
+    )
+    
+    # Extract optical properties
+    optical_properties <- list(
+      Ed_0m = forward_result$Ed_0m,
+      E0_0m = forward_result$E0_0m,
+      PAR = forward_result$PAR,
+      wavelength = forward_result$wavelength
+    )
+    
+    # Return full output
+    return(list(
+      par_estimates = par_estimates,
+      rrs_modeled = forward_result$rrs_total,
+      rrs_elastic = forward_result$rrs_elastic,
+      rrs_sicf = forward_result$rrs_sicf,
+      optical_properties = optical_properties
+    ))
   }
 
   return(par_estimates)

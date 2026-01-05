@@ -25,6 +25,7 @@
 *.safe
 *.zip
 *.xlsx
+*.xls
 # auto‑generated binaries / executables
 /examples/**/bernoulli
 */bin/*
