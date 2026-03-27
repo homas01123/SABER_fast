@@ -4,7 +4,7 @@
 \alias{log_ll}
 \title{log likelihood}
 \usage{
-log_ll(modelled, observed, sd)
+log_ll(modelled, observed, sd, weights = NULL)
 }
 \value{
 the likelihood of modeled vs observed values

@@ -2,12 +2,15 @@
 #'
 #' @return the likelihood of modeled vs observed values
 
-log_ll <- function(modelled, observed, sd) {
+log_ll <- function(modelled, observed, sd, weights = NULL) {
   observed <- na.omit(observed)
   modelled <- na.omit(modelled)
+  if (is.null(weights) || length(weights) != length(observed))
+    weights <- rep(1.0, length(observed))
+  sd_eff <- sd / sqrt(weights)
   return(
     sum(
-      dnorm(x = 10000 * observed, mean = 10000 * modelled, sd = sd, log = TRUE)
+      dnorm(x = 10000 * observed, mean = 10000 * modelled, sd = sd_eff, log = TRUE)
     )
   )
 }

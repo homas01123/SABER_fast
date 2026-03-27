@@ -5,7 +5,7 @@
 \alias{.forward_model_registry}
 \title{Forward Model Registry}
 \format{
-An object of class \code{environment} of length 3.
+An object of class \code{environment} of length 4.
 }
 \usage{
 .forward_model_registry

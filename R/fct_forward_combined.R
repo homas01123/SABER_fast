@@ -438,9 +438,9 @@ input_am03_sicf <- function(par, rrs, par_meta = NULL) {
 
   # Calculate a_dg at 443nm
   # a_dg = a_g + a_nap at 443nm (approximately 440nm)
-  a_g_440 <- if ("a_g_440" %in% names(par)) par["a_g_440"] else 0
+  a_dg_440 <- if ("a_dg_440" %in% names(par)) par["a_dg_440"] else 0
   a_nap_440 <- if ("a_nap_440" %in% names(par)) par["a_nap_440"] else 0
-  a_dg_443 <- a_g_440 + a_nap_440
+  a_dg_443 <- a_dg_440 + a_nap_440
 
   # Extract geometry info
   lat <- if ("lat" %in% names(par)) par["lat"] else 49

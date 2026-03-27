@@ -67,8 +67,8 @@ SEXP c_iop_from_oac(SEXP wavelength_sexp, SEXP par_sexp) {
   double chl = get_named_value(par_sexp, "chl", &found);
   int has_chl = found;
 
-  double a_g_440 = get_named_value(par_sexp, "a_g_440", &found);
-  int has_a_g_440 = found;
+  double a_dg_440 = get_named_value(par_sexp, "a_dg_440", &found);
+  int has_a_dg_440 = found;
 
   double a_nap_440 = get_named_value(par_sexp, "a_nap_440", &found);
   int has_a_nap_440 = found;
@@ -76,9 +76,8 @@ SEXP c_iop_from_oac(SEXP wavelength_sexp, SEXP par_sexp) {
   double bb_p_550 = get_named_value(par_sexp, "bb_p_550", &found);
   int has_bb_p_550 = found;
 
-  double a_g_s_g = get_named_value(par_sexp, "a_g_s_g", &found);
-  double a_g_s_d = get_named_value(par_sexp, "a_g_s_d", &found);
-  int has_a_g_slopes = found;
+  double a_dg_s = get_named_value(par_sexp, "a_dg_s", &found);
+  int has_a_dg_s = found;
 
   double a_nap_s_d = get_named_value(par_sexp, "a_nap_s_d", &found);
   int has_a_nap_slope = found;
@@ -102,9 +101,9 @@ SEXP c_iop_from_oac(SEXP wavelength_sexp, SEXP par_sexp) {
 
     // CDOM absorption
     double a_g = 0.0;
-    if (has_a_g_440) {
-      double slope = has_a_g_slopes ? (a_g_s_g + a_g_s_d) : 0.017;
-      a_g = a_g_440 * exp(-slope * (wavelength - 440.0));
+    if (has_a_dg_440) {
+      double slope = has_a_dg_s ? a_dg_s : 0.017;
+      a_g = a_dg_440 * exp(-slope * (wavelength - 440.0));
     }
 
     // NAP absorption

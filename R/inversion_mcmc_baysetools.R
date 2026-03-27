@@ -1,39 +1,216 @@
-make_prior <- function(sample_data, dist = "weibull", name = "param") {
-  fit <- fitdistrplus::fitdist(sample_data, dist)
-  list(
-    fit = fit,
-    density = function(x) {
-      do.call(paste0("d", dist), list(x = x, shape = fit$estimate[1], scale = fit$estimate[2], log = TRUE))
+#' Build a lognormal BayesianTools prior for deep-water inversion parameters
+#'
+#' Every parameter in par_inversed is given an independent lognormal prior whose
+#' log-space mean is the geometric midpoint of [lower_b, upper_b] and whose
+#' log-space sd spans half the log range.
+#'
+#' @param par_inversed character vector of parameter names to invert
+#' @param lower_b named numeric vector of lower bounds (must cover all par_inversed)
+#' @param upper_b named numeric vector of upper bounds (must cover all par_inversed)
+#' @return a BayesianTools prior object
+#' @export
+make_bt_prior_deep <- function(par_inversed, lower_b, upper_b) {
+  lower   <- lower_b[par_inversed]
+  upper   <- upper_b[par_inversed]
+  log_mid <- 0.5 * (log(lower) + log(upper))
+  log_sd  <- 0.5 * (log(upper) - log(lower))
+  BayesianTools::createPrior(
+    density = function(par) {
+      sum(dnorm(log(par), mean = log_mid, sd = log_sd, log = TRUE) - log(par))
     },
     sampler = function(n = 1) {
-      do.call(paste0("r", dist), list(n = n, shape = fit$estimate[1], scale = fit$estimate[2]))
+      mat <- matrix(NA_real_, nrow = n, ncol = length(par_inversed))
+      for (i in seq_len(n))
+        mat[i, ] <- exp(rnorm(length(par_inversed), mean = log_mid, sd = log_sd))
+      mat
     },
-    name = name
+    lower = lower,
+    upper = upper
   )
 }
 
 
-make_prior_bundle <- function(priors, lower, upper, best_guess = NULL) {
-  density_fn <- function(par) {
-    sum(mapply(function(p, val) p$density(val), priors, par))
-  }
-
-  sampler_fn <- function(n = 1) {
-    matrix(unlist(lapply(priors, function(p) p$sampler(n))), ncol = length(priors))
-  }
-
-  list(
-    prior = BayesianTools::createPrior(
-      density = density_fn,
-      sampler = sampler_fn,
-      lower = lower,
-      upper = upper,
-      best = best_guess
-    ),
-    names = sapply(priors, function(p) p$name)
+#' Build a BayesianTools prior for 2-class shallow water (mix_sand parametrisation)
+#'
+#' OAC parameters receive independent lognormal priors.
+#' mix_sand in [0, 1] receives a Beta(2, 2) prior (broad, symmetric, zero-avoiding).
+#'
+#' @param par_inversed character vector of parameter names to invert
+#' @param lower_b named numeric vector of lower bounds
+#' @param upper_b named numeric vector of upper bounds
+#' @return a BayesianTools prior object
+#' @export
+make_bt_prior_shallow_2class <- function(par_inversed, lower_b, upper_b) {
+  lower   <- lower_b[par_inversed]
+  upper   <- upper_b[par_inversed]
+  log_mid <- ifelse(par_inversed == "mix_sand", NA_real_, 0.5 * (log(lower) + log(upper)))
+  log_sd  <- ifelse(par_inversed == "mix_sand", NA_real_, 0.5 * (log(upper) - log(lower)))
+  BayesianTools::createPrior(
+    density = function(par) {
+      total <- 0
+      for (j in seq_along(par)) {
+        if (par_inversed[j] == "mix_sand") {
+          total <- total + dbeta(par[j], shape1 = 2, shape2 = 2, log = TRUE)
+        } else {
+          total <- total + dnorm(log(par[j]), mean = log_mid[j], sd = log_sd[j], log = TRUE) - log(par[j])
+        }
+      }
+      total
+    },
+    sampler = function(n = 1) {
+      mat <- matrix(NA_real_, nrow = n, ncol = length(par_inversed))
+      for (i in seq_len(n)) {
+        for (j in seq_along(par_inversed)) {
+          if (par_inversed[j] == "mix_sand") {
+            mat[i, j] <- rbeta(1, 2, 2)
+          } else {
+            mat[i, j] <- exp(rnorm(1, mean = log_mid[j], sd = log_sd[j]))
+          }
+        }
+      }
+      mat
+    },
+    lower = lower,
+    upper = upper
   )
 }
 
+
+#' Build a BayesianTools prior for N-class shallow water (soft Dirichlet + lognormal OACs)
+#'
+#' Parameters whose names start with r_rs_b_ are treated as benthic fractions and
+#' receive a soft Dirichlet prior: (alpha-1)*sum(log(b)) - 50*(sum(b)-1)^2.
+#' All other parameters receive independent lognormal priors.
+#'
+#' @param par_inversed character vector of parameter names to invert
+#' @param lower_b named numeric vector of lower bounds
+#' @param upper_b named numeric vector of upper bounds
+#' @param alpha Dirichlet concentration parameter (default 2)
+#' @return a BayesianTools prior object
+#' @export
+make_bt_prior_shallow_nclass <- function(par_inversed, lower_b, upper_b, alpha = 2) {
+  is_benthic <- grepl("^r_rs_b_", par_inversed)
+  lower   <- lower_b[par_inversed]
+  upper   <- upper_b[par_inversed]
+  log_mid <- ifelse(is_benthic, NA_real_, 0.5 * (log(lower) + log(upper)))
+  log_sd  <- ifelse(is_benthic, NA_real_, 0.5 * (log(upper) - log(lower)))
+  BayesianTools::createPrior(
+    density = function(par) {
+      b_vals <- par[is_benthic]
+      oac_lp <- sum(
+        dnorm(log(par[!is_benthic]), mean = log_mid[!is_benthic], sd = log_sd[!is_benthic], log = TRUE) -
+          log(par[!is_benthic])
+      )
+      dir_lp <- (alpha - 1) * sum(log(b_vals + 1e-9)) - 50 * (sum(b_vals) - 1)^2
+      oac_lp + dir_lp
+    },
+    sampler = function(n = 1) {
+      nb  <- sum(is_benthic)
+      mat <- matrix(NA_real_, nrow = n, ncol = length(par_inversed))
+      for (i in seq_len(n)) {
+        for (j in which(!is_benthic))
+          mat[i, j] <- exp(rnorm(1, mean = log_mid[j], sd = log_sd[j]))
+        g <- rgamma(nb, shape = alpha, rate = 1)
+        g <- g / sum(g)
+        mat[i, which(is_benthic)] <- g
+      }
+      mat
+    },
+    lower = lower,
+    upper = upper
+  )
+}
+
+
+
+#' Build an adaptive lognormal BayesianTools prior centred on per-observation spectral estimates
+#'
+#' Like \code{make_bt_prior_deep} but the log-space mean for each parameter is set
+#' from \code{modes} (e.g. OC3 / band-ratio estimates from \code{estimate_prior_modes})
+#' rather than the geometric midpoint of the bounds.
+#'
+#' @param par_inversed character vector of parameter names to invert
+#' @param lower_b named numeric vector of lower bounds (must cover all par_inversed)
+#' @param upper_b named numeric vector of upper bounds (must cover all par_inversed)
+#' @param modes named numeric vector of prior mode estimates (must cover all par_inversed)
+#' @return a BayesianTools prior object
+#' @export
+make_bt_prior_adaptive <- function(par_inversed, lower_b, upper_b, modes) {
+  lower   <- lower_b[par_inversed]
+  upper   <- upper_b[par_inversed]
+  modes_c <- pmax(lower * 1.01, pmin(upper * 0.99, modes[par_inversed]))
+  log_mid <- log(modes_c)
+  log_sd  <- pmax(0.3,
+    pmin(abs(log(upper) - log_mid), abs(log_mid - log(lower))) * 0.5
+  )
+  BayesianTools::createPrior(
+    density = function(par) {
+      sum(dnorm(log(par), mean = log_mid, sd = log_sd, log = TRUE) - log(par))
+    },
+    sampler = function(n = 1) {
+      mat <- matrix(NA_real_, nrow = n, ncol = length(par_inversed))
+      for (i in seq_len(n))
+        for (j in seq_along(par_inversed)) {
+          repeat {
+            v <- exp(rnorm(1, log_mid[j], log_sd[j]))
+            if (v >= lower[j] && v <= upper[j]) { mat[i, j] <- v; break }
+          }
+        }
+      mat
+    },
+    lower = lower,
+    upper = upper
+  )
+}
+
+
+#' Build an adaptive 2-class shallow-water BayesianTools prior
+#'
+#' OAC parameters receive independent lognormal priors centred on \code{modes}.
+#' \code{mix_sand} in [0, 1] receives a Beta(2, 2) prior.
+#' A \code{repeat\{\}} bounded sampler prevents out-of-bounds start values.
+#'
+#' @param par_inversed character vector of parameter names to invert
+#' @param lower_b named numeric vector of lower bounds
+#' @param upper_b named numeric vector of upper bounds
+#' @param modes named numeric vector of prior mode estimates (OAC parameters only)
+#' @return a BayesianTools prior object
+#' @export
+make_bt_prior_shallow_2class_adaptive <- function(par_inversed, lower_b, upper_b, modes) {
+  mix_idx <- which(par_inversed == "mix_sand")
+  oac_idx <- which(par_inversed != "mix_sand")
+  lower   <- lower_b[par_inversed]
+  upper   <- upper_b[par_inversed]
+  modes_c <- pmax(lower[oac_idx] * 1.01, pmin(upper[oac_idx] * 0.99, modes[par_inversed[oac_idx]]))
+  log_mid <- log(modes_c)
+  log_sd  <- pmax(0.3,
+    pmin(abs(log(upper[oac_idx]) - log_mid), abs(log_mid - log(lower[oac_idx]))) * 0.5
+  )
+  BayesianTools::createPrior(
+    density = function(par) {
+      oac_lp <- sum(dnorm(log(par[oac_idx]), mean = log_mid, sd = log_sd, log = TRUE) -
+                    log(par[oac_idx]))
+      mix_lp <- dbeta(par[mix_idx], 2, 2, log = TRUE)
+      oac_lp + mix_lp
+    },
+    sampler = function(n = 1) {
+      mat <- matrix(NA_real_, nrow = n, ncol = length(par_inversed))
+      for (i in seq_len(n)) {
+        for (k in seq_along(oac_idx)) {
+          j <- oac_idx[k]
+          repeat {
+            v <- exp(rnorm(1, log_mid[k], log_sd[k]))
+            if (v >= lower[j] && v <= upper[j]) { mat[i, j] <- v; break }
+          }
+        }
+        mat[i, mix_idx] <- max(0.001, min(0.999, rbeta(1, 2, 2)))
+      }
+      mat
+    },
+    lower = lower,
+    upper = upper
+  )
+}
 
 
 #' SABER inverse model using MCMC sampling
@@ -42,7 +219,7 @@ make_prior_bundle <- function(priors, lower, upper, best_guess = NULL) {
 #'
 #' @param rrs data-frame of wavelengths [nm] and sub-surface Rrs (must be named as rrs_0m) [1/sr]
 #' @param forward_model the SA forward model to be used (e.g. "am03")
-#' @param par_inversed vector of parameter names to be inversed (e.g. c("chl", "a_g_440", "bb_p_550"))
+#' @param par_inversed vector of parameter names to be inversed (e.g. c("chl", "a_dg_440", "bb_p_550"))
 #' @param prior prior function (see make_prior_bundle) or can set as NULL for uniform prior
 #' @param lower numeric vector containing lower bounds for each parameter in par_inversed. The order must match par_inversed.
 #' @param upper numeric vector containing upper bounds for each parameter in par_inversed. The order must match par_inversed.
@@ -53,7 +230,7 @@ make_prior_bundle <- function(priors, lower, upper, best_guess = NULL) {
 #' @param sampler MCMC sampler to be used (default = "DEzs", see BayesianTools documentation for other options)
 #' @param return_full_output logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)
 
-#' @return numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_g_440 = 0.1, a_g_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
+#' @return numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_dg_440 = 0.1, a_dg_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
 #'         If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties, mcmc_output
 #'
 #' @references Mukherjee, S., Mabit, R. and Bélanger, S. (2025), A semi-analytical Bayesian estimate retrieval algorithm for the inversion of remote-sensing reflectance in optically deep and shallow waters. Limnol Oceanogr Methods. https://doi.org/10.1002/lom3.70004
@@ -71,7 +248,8 @@ inverse_mcmc <- function(
     iterations = 10000,
     burnin = 2000,
     sampler = "DEzs",
-    return_full_output = FALSE) {
+    return_full_output = FALSE,
+    spectral_weights = NULL) {
 
   # Auto-add phi_f if using am03_sicf model and phi_f not in par_inversed
   if (forward_model == "am03_sicf" && !"phi_f" %in% par_inversed) {
@@ -88,7 +266,7 @@ inverse_mcmc <- function(
     # Identify non-numeric metadata parameters
     meta_params <- c("sicf_model", "depth_integration")
     meta_names <- intersect(names(par_fixed), meta_params)
-    
+
     if (length(meta_names) > 0) {
       par_meta <- par_fixed[meta_names]
       par_fixed <- par_fixed[!names(par_fixed) %in% meta_names]
@@ -96,22 +274,23 @@ inverse_mcmc <- function(
   }
 
   likelihood <- objective_factory(
-    model = forward_model,
-    objective = "log-ll",
-    rrs_observed = rrs,
-    par_inversed = par_inversed,
-    par_fixed = par_fixed,
-    par_meta = par_meta
+    model            = forward_model,
+    objective        = "log-ll",
+    rrs_observed     = rrs,
+    par_inversed     = par_inversed,
+    par_fixed        = par_fixed,
+    par_meta         = par_meta,
+    spectral_weights = spectral_weights
   )
 
   setup <- BayesianTools::createBayesianSetup(
-    prior = prior,
+    prior      = prior,
     likelihood = likelihood,
-    lower = lower,
-    best = best,
-    upper = upper,
-    names = par_inversed,
-    parallel = FALSE
+    lower      = if (is.null(prior)) lower else NULL,
+    best       = if (is.null(prior)) best  else NULL,
+    upper      = if (is.null(prior)) upper else NULL,
+    names      = par_inversed,
+    parallel   = FALSE
   )
 
   BayesianTools::checkBayesianSetup(setup)
@@ -132,7 +311,7 @@ inverse_mcmc <- function(
   )
 
   estimates_sd <- colMeans(estimates_sd)
-  
+
   map_values <- BayesianTools::MAP(out)[[1]]
 
   par_estimates <- stats::setNames(
@@ -142,7 +321,7 @@ inverse_mcmc <- function(
 
   # If using am03_sicf model with full output, compute optical properties
   if (forward_model == "am03_sicf" && return_full_output) {
-    
+
     # Combine MAP estimates with fixed parameters
     # Convert par_fixed from list to numeric vector if needed
     if (!is.null(par_fixed)) {
@@ -160,11 +339,11 @@ inverse_mcmc <- function(
     } else {
       par_complete <- map_values
     }
-    
+
     # Prepare inputs
     inputs <- input_am03_sicf(par_complete, rrs, par_meta)
     inputs$return_components <- TRUE
-    
+
     # Run forward model
     forward_result <- forward_am03_sicf(
       wavelength = inputs$wavelength,
@@ -185,7 +364,7 @@ inverse_mcmc <- function(
       depth_integration = inputs$depth_integration,
       return_components = TRUE
     )
-    
+
     # Extract optical properties
     optical_properties <- list(
       Ed_0m = forward_result$Ed_0m,
@@ -193,7 +372,7 @@ inverse_mcmc <- function(
       PAR = forward_result$PAR,
       wavelength = forward_result$wavelength
     )
-    
+
     # Return full output
     return(list(
       par_estimates = par_estimates,

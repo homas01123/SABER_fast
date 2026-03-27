@@ -16,7 +16,8 @@ inverse_mcmc(
   iterations = 10000,
   burnin = 2000,
   sampler = "DEzs",
-  return_full_output = FALSE
+  return_full_output = FALSE,
+  spectral_weights = NULL
 )
 }
 \arguments{
@@ -24,7 +25,7 @@ inverse_mcmc(
 
 \item{forward_model}{the SA forward model to be used (e.g. "am03")}
 
-\item{par_inversed}{vector of parameter names to be inversed (e.g. c("chl", "a_g_440", "bb_p_550"))}
+\item{par_inversed}{vector of parameter names to be inversed (e.g. c("chl", "a_dg_440", "bb_p_550"))}
 
 \item{prior}{prior function (see make_prior_bundle) or can set as NULL for uniform prior}
 
@@ -45,7 +46,7 @@ inverse_mcmc(
 \item{return_full_output}{logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)}
 }
 \value{
-numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_g_440 = 0.1, a_g_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
+numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_dg_440 = 0.1, a_dg_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
 If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties, mcmc_output
 }
 \description{

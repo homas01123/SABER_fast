@@ -15,7 +15,9 @@ inverse_gradient(
   init_val = NULL,
   upper_b = NULL,
   verbose = F,
-  return_full_output = FALSE
+  return_full_output = FALSE,
+  log_prior_fn = NULL,
+  spectral_weights = NULL
 )
 }
 \arguments{
@@ -42,6 +44,18 @@ If not provided will be calculated in \code{parse_inverse_parameter}.}
 \item{verbose}{Boolean, if TRUE prints additional information}
 
 \item{return_full_output}{logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)}
+
+\item{log_prior_fn}{Optional \verb{function(par)} returning the log-prior density
+for the named inverted-parameter vector.  When supplied the optimiser
+minimises \code{-(log_ll + log_prior)}, i.e. it finds the MAP estimate.
+Typical priors to pass:
+\itemize{
+\item Lognormal on OAC scalars: \code{dlnorm(par[["chl"]], log(1), 1.5, log=TRUE)}
+\item Beta on a single benthic mixing fraction: \code{dbeta(par[["mix_sand"]], 2, 2, log=TRUE)}
+\item Soft Dirichlet on 3 fractions: sum of \code{(alpha-1)*log(x_i)} terms
+plus a quadratic sum-to-one penalty
+}
+Set to NULL (default) for standard MLE behaviour.}
 }
 \value{
 A named vector with the maximum likelihood estimates and their standard deviations.

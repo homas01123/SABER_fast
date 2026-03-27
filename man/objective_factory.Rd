@@ -11,7 +11,9 @@ objective_factory(
   par_inversed,
   par_fixed = NULL,
   par_meta = NULL,
-  minimize = FALSE
+  minimize = FALSE,
+  log_prior_fn = NULL,
+  spectral_weights = NULL
 )
 }
 \arguments{
@@ -24,6 +26,13 @@ objective_factory(
 \item{par_fixed}{Named list or data frame of fixed parameters}
 
 \item{minimize}{Logical, if TRUE returns negative objective for minimization}
+
+\item{log_prior_fn}{Optional function \verb{function(par)} returning the log-prior
+density for the \strong{inverted} parameters (as a named numeric vector).
+When supplied and \code{minimize = TRUE}, the factory returns
+\code{-(log_ll + log_prior)}, i.e. MAP optimisation.
+When \code{minimize = FALSE} (MCMC likelihood path) the prior is ignored here
+because BayesianTools handles it via \code{createBayesianSetup(prior = ...)}.}
 }
 \value{
 A function returning the model objective/likelihood to be used in an optimization process

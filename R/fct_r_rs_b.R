@@ -57,6 +57,8 @@ select_benthic_classes <- function(classes) {
   )
   
   load_r_rs_b(wavelength_vec, r_rs_b_matrix)
+  # Invalidate the interpolated cache so the next forward call rebuilds from the new matrix
+  tryCatch(pure_water_iop(1.0), error = function(e) NULL)
 
   # Store selected classes in options
   options(SABER.selected_classes = paste0("r_rs_b_", classes))

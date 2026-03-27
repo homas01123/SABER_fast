@@ -15,6 +15,17 @@
 #' @param upper_b same as `lower_b` but for maximum possible values..
 #' @param verbose Boolean, if TRUE prints additional information
 #' @param return_full_output logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)
+#' @param log_prior_fn Optional `function(par)` returning the log-prior density
+#'   for the named inverted-parameter vector.  When supplied the optimiser
+#'   minimises `-(log_ll + log_prior)`, i.e. it finds the MAP estimate.
+#'   Typical priors to pass:
+#'   \itemize{
+#'     \item Lognormal on OAC scalars: `dlnorm(par[["chl"]], log(1), 1.5, log=TRUE)`
+#'     \item Beta on a single benthic mixing fraction: `dbeta(par[["mix_sand"]], 2, 2, log=TRUE)`
+#'     \item Soft Dirichlet on 3 fractions: sum of `(alpha-1)*log(x_i)` terms
+#'       plus a quadratic sum-to-one penalty
+#'   }
+#'   Set to NULL (default) for standard MLE behaviour.
 #' @return A named vector with the maximum likelihood estimates and their standard deviations.
 #'         If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties
 #'
@@ -30,7 +41,9 @@ inverse_gradient <- function(
     init_val = NULL,
     upper_b = NULL,
     verbose = F,
-    return_full_output = FALSE) {
+    return_full_output = FALSE,
+    log_prior_fn = NULL,
+    spectral_weights = NULL) {
       
   rlang::inform(paste0("\033[0;33m", "###################################################################", "\033[0m", "\n"))
   rlang::inform(paste0("\033[0;39m", "########### ALL GOOD THINGS ARE WILD & FREE, LET'S RUN FREE #######", "\033[0m", "\n"))
@@ -59,13 +72,15 @@ inverse_gradient <- function(
   }
 
   minimization_fct <- objective_factory(
-    model = forward_model,
-    objective = objective_fct,
-    rrs_observed = rrs,
-    par_fixed = par_fixed,
-    par_meta = par_meta,
-    par_inversed = par_inversed,
-    minimize = TRUE
+    model            = forward_model,
+    objective        = objective_fct,
+    rrs_observed     = rrs,
+    par_fixed        = par_fixed,
+    par_meta         = par_meta,
+    par_inversed     = par_inversed,
+    minimize         = TRUE,
+    log_prior_fn     = log_prior_fn,
+    spectral_weights = spectral_weights
   )
 
   # Instantiate initial values
