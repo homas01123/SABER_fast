@@ -2,10 +2,13 @@
 % Please edit documentation in R/registry.R
 \name{list_input_preparer}
 \alias{list_input_preparer}
-\title{List all registered input preparer}
+\title{List registered input preparers}
 \usage{
 list_input_preparer()
 }
+\value{
+Character vector of registered input preparer names.
+}
 \description{
-List all registered input preparer
+List registered input preparers
 }

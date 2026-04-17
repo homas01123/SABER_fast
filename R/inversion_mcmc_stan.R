@@ -4,7 +4,7 @@
 #' Much more efficient than random-walk MCMC for complex posteriors, especially
 #' in shallow dark waters with low SNR.
 #'
-#' @param rrs data-frame with columns: wavelength [nm] and rrs_0m [1/sr]
+#' @param rrs data-frame with columns: wavelength \[nm\] and rrs_0m \[1/sr\]
 #' @param forward_model Forward model name (default = "am03")
 #' @param par_inversed Vector of parameter names to retrieve
 #' @param prior List of prior specifications (optional, uses weakly informative defaults)

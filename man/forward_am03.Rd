@@ -15,17 +15,17 @@ forward_am03(
 )
 }
 \arguments{
-\item{wavelength}{vector of wavelengths \link{nm}}
+\item{wavelength}{vector of wavelengths [nm]}
 
 \item{iop}{list with elements \code{a} and \code{bb}, same length as wavelength}
 
 \item{water_type}{either 1 or 2 (default = 2)}
 
-\item{theta_sun}{sun zenith angle \link{degrees}}
+\item{theta_sun}{sun zenith angle [degrees]}
 
-\item{theta_view}{sensor view angle \link{degrees}}
+\item{theta_view}{sensor view angle [degrees]}
 
-\item{h_w}{optional: water depth \link{m} (enables shallow mode)}
+\item{h_w}{optional: water depth [m] (enables shallow mode)}
 
 \item{r_b}{optional: bottom reflectance vector (same length as wavelength)}
 }

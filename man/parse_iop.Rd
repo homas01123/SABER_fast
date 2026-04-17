@@ -2,25 +2,29 @@
 % Please edit documentation in R/utils_parser.R
 \name{parse_iop}
 \alias{parse_iop}
-\title{parse_iop}
+\title{Interpolate non-water IOPs to a target wavelength grid}
 \usage{
 parse_iop(a, bb, wavelength, verbose = F)
 }
 \arguments{
-\item{a}{tibble with columns {a, wavelength}}
+\item{a}{Data frame with columns \code{wavelength} and \code{a}
+\link{m\eqn{^{-1}}}.}
 
-\item{bb}{tibble with columns {bb, wavelength}}
+\item{bb}{Data frame with columns \code{wavelength} and \code{bb}
+\link{m\eqn{^{-1}}}.}
 
-\item{wavelength}{a vector with the requested interpolation wavelength}
+\item{wavelength}{Numeric vector of target wavelengths \link{nm}.}
 
-\item{verbose}{Boolean, produce input and interpolated IOPs plot}
+\item{verbose}{Logical.  Plot interpolated vs. observed IOPs?
+Default \code{FALSE}.}
 }
 \value{
-A tibble with columns {wavelength, a, bb}
+Tibble with columns \code{wavelength}, \code{a}, \code{bb}.
 }
 \description{
-take tibbles for non water absorption and backscattering
+Linearly interpolates absorption and fits a power-law to backscattering,
+both resampled to \code{wavelength}.
 }
 \author{
-Raphael Mabit, Soham Mukherjee
+Soham Mukherjee, Raphael Mabit
 }

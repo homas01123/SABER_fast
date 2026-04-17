@@ -4,7 +4,7 @@
 \alias{rss}
 \title{residual sum of square}
 \usage{
-rss(modelled, observed)
+rss(modelled, observed, weights = NULL)
 }
 \value{
 the residual sum of square

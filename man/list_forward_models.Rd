@@ -2,10 +2,13 @@
 % Please edit documentation in R/registry.R
 \name{list_forward_models}
 \alias{list_forward_models}
-\title{List all registered forward models}
+\title{List registered forward models}
 \usage{
 list_forward_models()
 }
+\value{
+Character vector of registered forward model names.
+}
 \description{
-List all registered forward models
+List registered forward models
 }

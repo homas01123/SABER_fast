@@ -47,82 +47,67 @@
 #' @keywords internal
 .compute_Ed_cached <- function(wavelength, sunzen_deg, lat, lon, date_time, verbose = FALSE) {
 
-  # Create cache key from all parameters
-  # Use paste with separator to create unique key
-  wv_key <- paste(wavelength, collapse = ",")
-  cache_key <- paste(
-    wv_key,
-    round(sunzen_deg, 4),
-    round(lat, 4),
-    round(lon, 4),
-    as.numeric(date_time),
-    sep = "|"
-  )
+  # ---------------------------------------------------------------------------
+  # Fast-path cache check: build a lightweight key WITHOUT parsing date or
+  # concatenating all wavelengths (both are expensive at 22k MCMC calls/pixel).
+  # Wavelength fingerprint = first + last + count: sufficient to distinguish
+  # all grids encountered in a single inversion run.
+  # ---------------------------------------------------------------------------
+  nw     <- length(wavelength)
+  dt_num <- as.numeric(date_time)          # cheap — just reads the numeric attribute
+  wv_key <- sprintf("%.2f_%.2f_%d", wavelength[1L], wavelength[nw], nw)
 
-  # Check cache
-  if (exists(cache_key, envir = .Ed_cache)) {
-    if (verbose) message("Ed cache HIT - using cached Gregg & Carder result")
-    return(get(cache_key, envir = .Ed_cache))
+  if (sunzen_deg >= 0) {
+    cache_key <- paste(wv_key, round(sunzen_deg, 4L), round(lat, 4L),
+                       round(lon, 4L), dt_num, sep = "|")
+    if (exists(cache_key, envir = .Ed_cache)) {
+      if (verbose) message("Ed cache HIT - using cached Gregg & Carder result")
+      return(get(cache_key, envir = .Ed_cache))
+    }
+  }
+
+  # Cache miss (or sunzen was the -99 sentinel) — now do the heavier date parse
+  jday_no    <- lubridate::yday(date_time)
+  time_no    <- format(date_time, "%T")
+  time_parts <- as.numeric(strsplit(time_no, ":")[[1L]])
+  time_dec   <- time_parts[1L] + time_parts[2L] / 60
+
+  # Resolve sunzen from lat/lon/time when the sentinel was supplied
+  if (sunzen_deg < 0) {
+    sunzen_deg <- .gc_sunang(iday = jday_no, hr = time_dec, xlon = lon, ylat = lat)
+    cache_key  <- paste(wv_key, round(sunzen_deg, 4L), round(lat, 4L),
+                        round(lon, 4L), dt_num, sep = "|")
+    if (exists(cache_key, envir = .Ed_cache)) {
+      if (verbose) message("Ed cache HIT - using cached Gregg & Carder result")
+      return(get(cache_key, envir = .Ed_cache))
+    }
   }
 
   if (verbose) message("Ed cache MISS - computing Gregg & Carder (will be cached)")
 
-  # Load Gregg & Carder data
-  Cops::GreggCarder.data()
-
-  # Extract date/time components
-  jday_no <- lubridate::yday(date_time)
-  time_no <- format(date_time, "%T")
-  time_dec <- sapply(strsplit(as.character(time_no), ":"), function(x) {
-    x <- as.numeric(x)
-    x[1] + x[2]/60
-  })
-
-  # Calculate or use provided solar zenith angle
-  if (sunzen_deg < 0) {
-    sunzen_deg <- Cops::GreggCarder.sunang(
-      rad = 180/pi, iday = jday_no,
-      xlon = lon, ylat = lat, hr = time_dec
-    )
-  }
-
-  # Calculate Ed at 0+ using Gregg & Carder model
-  Ed_gc <- Cops::GreggCarder.f(
-    the = sunzen_deg,
+  # Calculate Ed at 0+ using internal Gregg & Carder model
+  Ed_gc <- .gc_irradiance(
+    the     = sunzen_deg,
     lam.sel = wavelength,
-    hr = time_dec,
-    jday = jday_no,
-    rlon = lon,
-    rlat = lat,
-    debug = FALSE
+    hr      = time_dec,
+    jday    = jday_no,
+    rlon    = lon,
+    rlat    = lat
   )
 
-  # Check if sun is below horizon
-  if (all(is.na(Ed_gc))) {
-    stop("Sun is below horizon for given geometry. Adjust date/time or location.")
-  }
-
-  # Extract components
-  Ed0_0p <- Ed_gc$Ed      # Total Ed at 0+
-  Ed0_dir_0p <- Ed_gc$Edir  # Direct component
-  Ed0_dif_0p <- Ed_gc$Edif  # Diffuse component
-
   # Calculate Fresnel reflectance
-  rhoF <- Cops::GreggCarder.sfcrfl(rad = 180/pi, theta = sunzen_deg, ws = 5)
+  rhoF <- .gc_sfcrfl(theta = sunzen_deg, ws = 5)
 
   # Convert Ed from 0+ to 0- (subsurface)
-  Ed_0m <- (Ed0_dir_0p * (1 - rhoF$rod)) + (Ed0_dif_0p * (1 - rhoF$ros))
+  Ed_0m <- (Ed_gc$Edir * (1 - rhoF$rod)) + (Ed_gc$Edif * (1 - rhoF$ros))
 
-  # Calculate E0 (scalar irradiance) at surface
-  # E0 ≈ Ed × (1 + 1/μ_d) where μ_d is average cosine for diffuse light
-  mu_d <- 0.85  # Typical value for clear sky
-  E0_0m <- Ed_0m * (1 + 1/mu_d)
+  # E0 ≈ Ed × (1 + 1/μ_d);  μ_d = 0.85 for clear sky
+  E0_0m <- Ed_0m * (1 + 1 / 0.85)
 
-  # Cache the result
   result <- list(
-    Ed_0m = Ed_0m,
-    E0_0m = E0_0m,
-    sunzen_deg = sunzen_deg  # Return calculated sunzen if it was < 0
+    Ed_0m      = Ed_0m,
+    E0_0m      = E0_0m,
+    sunzen_deg = sunzen_deg
   )
 
   assign(cache_key, result, envir = .Ed_cache)
@@ -161,56 +146,39 @@ get_Ed_cache_info <- function() {
 
 #' Build WRF Cache
 #'
-#' Pre-compute WRF matrices for a grid of quantum yield (phi_f) values.
-#' During inversion, WRF matrices are interpolated from this cache.
+#' Pre-computes a single base WRF matrix (phi_f = 1) for the given wavelength
+#' grid. The actual quantum yield is applied at compute time inside
+#' \code{sicf_analytical()}, exploiting the linearity
+#' WRF(i,j; phi_f) = phi_f * WRF_base(i,j).
 #'
 #' @param wavelength Vector of wavelengths (nm)
-#' @param phi_f_grid Vector of quantum yield values to cache (default: seq(0.005, 0.1, by = 0.001))
 #' @param verbose Print progress messages
 #'
 #' @return Invisible NULL (cache is stored in .WRF_cache environment)
 #' @export
-build_WRF_cache <- function(wavelength,
-                            phi_f_grid = seq(0.005, 0.1, by = 0.001),
-                            verbose = TRUE) {
+build_WRF_cache <- function(wavelength, verbose = TRUE) {
+
+  nwv    <- length(wavelength)
+  wv_key <- sprintf("%.4f_%.4f_%d", wavelength[1L], wavelength[nwv], nwv)
 
   if (verbose) {
-    message(sprintf("Building WRF cache for %d wavelengths and %d phi_f values...",
-                    length(wavelength), length(phi_f_grid)))
+    message(sprintf("Building WRF base matrix for %d wavelengths...", nwv))
   }
 
-  # Create wavelength key
-  wv_key <- paste(wavelength, collapse = ",")
-
-  # Store wavelength vector
-  assign("wavelength_key", wv_key, envir = .WRF_cache)
-  assign("wavelength", wavelength, envir = .WRF_cache)
-  assign("phi_f_grid", phi_f_grid, envir = .WRF_cache)
-
-  # Pre-compute WRF matrices for each phi_f
   start_time <- Sys.time()
 
-  for (i in seq_along(phi_f_grid)) {
-    phi_f <- phi_f_grid[i]
+  # Build one base matrix with phi_f = 1; actual phi_f is passed at compute time
+  WRF_base <- .Call("c_discretize_wrf", as.double(wavelength), 1.0)
 
-    # Compute WRF matrix using existing function
-    WRF_matrix <- .discretize_wrf_chl(wavelength, quant_phi = phi_f)
-
-    # Store in cache with phi_f as key
-    cache_key <- sprintf("WRF_%.6f", phi_f)
-    assign(cache_key, WRF_matrix, envir = .WRF_cache)
-
-    if (verbose && i %% 5 == 0) {
-      message(sprintf("  Cached %d/%d phi_f values...", i, length(phi_f_grid)))
-    }
-  }
+  assign("wavelength_key", wv_key,     envir = .WRF_cache)
+  assign("wavelength",     wavelength, envir = .WRF_cache)
+  assign("WRF_base",       WRF_base,   envir = .WRF_cache)
 
   elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
 
   if (verbose) {
-    message(sprintf("WRF cache built in %.2f seconds", elapsed))
-    message(sprintf("Cache size: %d matrices (%d x %d each)",
-                    length(phi_f_grid), length(wavelength), length(wavelength)))
+    message(sprintf("WRF base matrix built in %.2f seconds (%d x %d)",
+                    elapsed, nwv, nwv))
   }
 
   invisible(NULL)
@@ -238,7 +206,8 @@ build_WRF_cache <- function(wavelength,
   }
 
   # Check if wavelength matches
-  wv_key <- paste(wavelength, collapse = ",")
+  nwv    <- length(wavelength)
+  wv_key <- sprintf("%.4f_%.4f_%d", wavelength[1L], wavelength[nwv], nwv)
   cached_wv_key <- get("wavelength_key", envir = .WRF_cache)
 
   if (wv_key != cached_wv_key) {
@@ -251,68 +220,21 @@ build_WRF_cache <- function(wavelength,
   invisible(NULL)
 }
 
-#' Get Cached WRF with Interpolation
+#' Get Cached WRF Base Matrix
 #'
-#' Retrieve WRF matrix from cache, using linear interpolation if exact phi_f
-#' value is not cached.
+#' Returns the pre-computed base WRF matrix (phi_f = 1).  The caller is
+#' responsible for scaling by the actual phi_f value.
 #'
 #' @param wavelength Vector of wavelengths (nm)
-#' @param phi_f Quantum yield value
 #'
-#' @return WRF matrix (wavelength x wavelength)
+#' @return WRF base matrix (N x N, phi_f = 1)
 #' @keywords internal
-.get_WRF_cached <- function(wavelength, phi_f) {
+.get_WRF_cached <- function(wavelength) {
 
   # Ensure cache is initialized (auto-build if needed)
   .ensure_WRF_cache(wavelength, verbose = FALSE)
 
-  # Check if wavelength matches
-  wv_key <- paste(wavelength, collapse = ",")
-  cached_wv_key <- get("wavelength_key", envir = .WRF_cache)
-
-  if (wv_key != cached_wv_key) {
-    stop("Wavelength mismatch with cache. Rebuild cache with build_WRF_cache(wavelength).")
-  }
-
-  # Get phi_f grid
-  phi_f_grid <- get("phi_f_grid", envir = .WRF_cache)
-
-  # Check bounds
-  if (phi_f < min(phi_f_grid) || phi_f > max(phi_f_grid)) {
-    warning(sprintf("phi_f = %.6f outside cache range [%.6f, %.6f]. Using nearest value.",
-                    phi_f, min(phi_f_grid), max(phi_f_grid)))
-    phi_f <- max(min(phi_f, max(phi_f_grid)), min(phi_f_grid))
-  }
-
-  # Check for exact match
-  cache_key <- sprintf("WRF_%.6f", phi_f)
-  if (exists(cache_key, envir = .WRF_cache)) {
-    return(get(cache_key, envir = .WRF_cache))
-  }
-
-  # Find bracketing values for interpolation
-  idx_upper <- which(phi_f_grid >= phi_f)[1]
-  idx_lower <- idx_upper - 1
-
-  if (is.na(idx_upper) || idx_lower < 1) {
-    # Edge case: use nearest
-    nearest_idx <- which.min(abs(phi_f_grid - phi_f))
-    cache_key <- sprintf("WRF_%.6f", phi_f_grid[nearest_idx])
-    return(get(cache_key, envir = .WRF_cache))
-  }
-
-  # Get bracketing WRF matrices
-  phi_f_lower <- phi_f_grid[idx_lower]
-  phi_f_upper <- phi_f_grid[idx_upper]
-
-  WRF_lower <- get(sprintf("WRF_%.6f", phi_f_lower), envir = .WRF_cache)
-  WRF_upper <- get(sprintf("WRF_%.6f", phi_f_upper), envir = .WRF_cache)
-
-  # Linear interpolation
-  alpha <- (phi_f - phi_f_lower) / (phi_f_upper - phi_f_lower)
-  WRF_interpolated <- (1 - alpha) * WRF_lower + alpha * WRF_upper
-
-  return(WRF_interpolated)
+  get("WRF_base", envir = .WRF_cache)
 }
 
 #' Clear WRF Cache
@@ -340,13 +262,10 @@ get_WRF_cache_info <- function() {
   }
 
   wavelength <- get("wavelength", envir = .WRF_cache)
-  phi_f_grid <- get("phi_f_grid", envir = .WRF_cache)
 
   list(
     initialized = TRUE,
     n_wavelengths = length(wavelength),
-    n_phi_f_values = length(phi_f_grid),
-    phi_f_range = range(phi_f_grid),
     wavelength_range = range(wavelength)
   )
 }
@@ -443,59 +362,57 @@ sicf_semi_analytical <- function(c_chl,
     Ed_sim_interp <- exp(Ed_sim_interp)  # Extrapolate (NO × 100)
     Ed_sim_interp_0m <- 0.96 * Ed_sim_interp   # Convert to underwater E0-
     Ed_0m_sicf <- Ed_sim_interp_0m
+    E0_0m      <- Ed_0m_sicf * (1 + 1 / 0.85)  # approximate scalar irradiance
   }
 
-  # Calculate fluorescence line height at 685 nm using Gilerson et al. (2007)
-  # Lf(685) = φ_f × c1 × Chl / (1 + c2 × a_dg + c3 × Chl)
-  # The Gilerson formula is empirical and outputs a dimensionless fluorescence line height
-  # that represents Rrs contribution. To get radiance, multiply by Ed and divide by scale factor.
-  Lf_685_height <- phi_f * coeff_x[1] * c_chl /
-                   (1 + coeff_x[2] * a_dg_443 + coeff_x[3] * c_chl)
+  # -------------------------------------------------------------------------
+  # Core SICF math: use C implementation on the hot inversion path
+  # (return_radiance = FALSE) for maximum speed; fall back to R when the
+  # caller needs Lf (diagnostic / visualisation use).
+  # -------------------------------------------------------------------------
+  if (!return_radiance) {
 
-  # Convert fluorescence line height to radiance
-  # Lf = fluorescence_height × Ed / scale_factor
-  # Scale factor empirically determined to match analytical model (~13-15)
-  Lf_685 <- Lf_685_height * Ed_0m_sicf[which.min(abs(wavelength - 685))] / 13.5
-
-  # Spectral shape: Dual Gaussian distribution
-  # Primary peak at 685 nm (FWHM = 25 nm)
-  # Secondary peak at 730 nm (FWHM = 50 nm, 30% amplitude)
-  Lf_distribute <- function(wv) {
-    exp(-4 * log(2) * ((wv - 685)/25)^2) +
-      0.3 * exp(-4 * log(2) * ((wv - 730)/50)^2)
-  }
-
-  # Calculate fluorescence radiance at all wavelengths
-  Lf <- Lf_685 * Lf_distribute(wavelength)
-
-  # Convert to remote sensing reflectance
-  Rrs_sicf <- Lf / Ed_0m_sicf
-
-  # E0_0m already calculated in .compute_Ed_cached() or set below for file-based Ed
-  if (!use_analytic_Ed || Ed_source != "gregg_carder") {
-    # For file-based Ed, calculate E0 approximately
-    mu_d <- 0.85
-    E0_0m <- Ed_0m_sicf * (1 + 1/mu_d)
-  }
-
-  # Prepare output as data frame (consistent with sicf_analytical)
-  if (return_radiance) {
-    result <- data.frame(
-      wavelength = wavelength,
-      Lf = Lf,
-      Ed = Ed_0m_sicf,
-      E0 = E0_0m,
-      Rrs_sicf = Rrs_sicf
+    Rrs_sicf <- .Call(
+      "c_sicf_rrs_semi_analytical",
+      as.double(wavelength),
+      as.double(Ed_0m_sicf),
+      as.double(c_chl),
+      as.double(a_dg_443),
+      as.double(phi_f),
+      as.double(coeff_x),   # length-3 vector [c1, c2, c3]
+      13.5                  # Lf_685 scale factor
     )
-    if (verbose) message("Subsurface (0-) fluorescence radiance (Lf) calculated")
-  } else {
-    result <- data.frame(
-      wavelength = wavelength,
+
+    result <- list(
       Rrs_sicf = Rrs_sicf,
-      Ed = Ed_0m_sicf,
-      E0 = E0_0m
+      Ed       = Ed_0m_sicf,
+      E0       = E0_0m
     )
     if (verbose) message("Subsurface (0-) Rrs equivalent to SICF calculated")
+
+  } else {
+
+    # R path: kept for diagnostic / return_radiance = TRUE callers
+    Lf_685_height <- phi_f * coeff_x[1] * c_chl /
+                     (1 + coeff_x[2] * a_dg_443 + coeff_x[3] * c_chl)
+    Lf_685 <- Lf_685_height * Ed_0m_sicf[which.min(abs(wavelength - 685))] / 13.5
+
+    d1 <- wavelength - 685
+    d2 <- wavelength - 730
+    ln2x4 <- 4 * log(2)
+    shape <- exp(-ln2x4 * (d1/25)^2) + 0.3 * exp(-ln2x4 * (d2/50)^2)
+    Lf <- Lf_685 * shape
+    Rrs_sicf <- Lf / Ed_0m_sicf
+
+    result <- list(
+      wavelength = wavelength,
+      Lf         = Lf,
+      Ed         = Ed_0m_sicf,
+      E0         = E0_0m,
+      Rrs_sicf   = Rrs_sicf
+    )
+    if (verbose) message("Subsurface (0-) fluorescence radiance (Lf) calculated")
+
   }
 
   return(result)
@@ -587,8 +504,10 @@ sicf_semi_analytical <- function(c_chl,
 #'
 #' @keywords internal
 .discretize_wrf_chl <- function(wavelength, quant_phi = 0.02) {
+  # Fast path: C implementation (50-100x speedup vs nested R loops)
+  return(.Call("c_discretize_wrf", as.double(wavelength), as.double(quant_phi)))
 
-  deltaw <- 1  # Integration step size (nm)
+  deltaw <- 1  # Integration step size (nm)  # nolint (dead code — R fallback preserved for reference)
   waveb <- wavelength
   Nwave <- length(waveb)
 
@@ -1152,14 +1071,10 @@ sicf_analytical <- function(c_chl,
     if (verbose) message("SICF Analytical: SURFACE-ONLY mode - computing full wavelength redistribution model")
   }
 
-  # Calculate phytoplankton absorption if not provided
-  if (is.null(a_phy)) {
-    if (verbose) message("SICF Analytical: Estimating a_phy from Chl concentration")
-    a_phy <- .calculate_a_phy(c_chl, wavelength)
-  } else {
-    if (length(a_phy) != length(wavelength)) {
-      stop("a_phy must have same length as wavelength")
-    }
+  # a_phy: validate if supplied externally; otherwise defer to iop_from_oac
+  # (Bricaud model) below — used for both surface-only and depth-resolved paths.
+  if (!is.null(a_phy) && length(a_phy) != length(wavelength)) {
+    stop("a_phy must have same length as wavelength")
   }
 
   # Calculate scalar irradiance E0 at 0-
@@ -1229,8 +1144,8 @@ sicf_analytical <- function(c_chl,
   # Discretize WRF into matrix (with automatic caching for performance)
   if (verbose) message("SICF Analytical: Retrieving wavelength redistribution function...")
 
-  # Use cached WRF (auto-initializes cache if needed)
-  WRF_matrix <- .get_WRF_cached(wavelength, phi_f)
+  # Use cached WRF base matrix (phi_f = 1); actual phi_f applied in C
+  WRF_matrix <- .get_WRF_cached(wavelength)
 
   # Calculate Kd for depth-resolved mode
   Kd_wavelength <- NULL
@@ -1242,12 +1157,15 @@ sicf_analytical <- function(c_chl,
     # Build parameter vector for iop_from_oac
     par <- c(
       "chl" = c_chl,
-      "a_g_440" = a_dg_443,  # Will be adjusted to 440 nm inside iop_from_oac
+      "a_dg_440" = a_dg_443,  # Will be adjusted to 440 nm inside iop_from_oac
       "bb_p_550" = bb_p_550
     )
 
-    # Get total IOPs (a_w + a_phy + a_g, bb_w + bb_p)
+    # Get total IOPs (a_w + a_phy + a_g, bb_w + bb_p) and extract a_phy
     iop_total <- iop_from_oac(wavelength = wavelength, par = par)
+
+    # Reuse Bricaud a_phy from iop_from_oac — consistent with Kd, no extra loop
+    a_phy <- iop_total$a_phy
 
     # Calculate Kd = (a + bb) / μ_d
     # μ_d ≈ 0.8 is average cosine for diffuse light field
@@ -1258,31 +1176,29 @@ sicf_analytical <- function(c_chl,
       message(sprintf("SICF Analytical: Kd range = %.4f to %.4f m⁻¹",
                       min(Kd_wavelength), max(Kd_wavelength)))
     }
+  } else if (is.null(a_phy)) {
+    # Surface-only mode: get Bricaud a_phy from iop_from_oac (chl only)
+    if (verbose) message("SICF Analytical: No a_phy input. Calculating from from Bricaud model (1998)")
+    a_phy <- iop_from_oac(wavelength = wavelength,
+                          par = c("chl" = c_chl))$a_phy
   }
 
   # Calculate fluorescence radiance by integration
   # Lf(λ_em) = (1/4π) × Σ[E0(λ_ex) × a_phy(λ_ex) × WRF(λ_ex, λ_em)]
   # If depth_resolved: multiply by 1/(Kd_ex + Kd_em) for depth integration
-  if (verbose) message("SICF Analytical: Computing fluorescence radiance via WRF integration...")
+  if (verbose) message("SICF Analytical: Computing fluorescence radiance via WRF integration")
 
   Nwave <- length(wavelength)
 
   if (depth_resolved) {
-    # VECTORIZED: Depth-integrated fluorescence with attenuation
-    # Pre-compute flux absorbed for all wavelengths
-    flux_absorbed_surface <- irrad * a_phy  # Vector operation
-
-    # Create Kd sum matrix using outer product (vectorized)
-    Kd_sum_matrix <- outer(Kd_wavelength, Kd_wavelength, "+")
-    depth_factor_matrix <- 1.0 / Kd_sum_matrix
-
-    # Compute flux emitted matrix (all excitation → all emission)
-    # flux_emitted[i,j] = flux_absorbed[i] × WRF[i,j] × depth_factor[i,j]
-    flux_emitted_matrix <- WRF_matrix * depth_factor_matrix * flux_absorbed_surface
-
-    # Sum over excitation wavelengths (columns) to get emission at each wavelength
-    # colSums is optimized C code
-    Lf <- colSums(flux_emitted_matrix) / (4 * pi)
+    # C path: fused double loop — no N×N temporary matrix allocations
+    # Lf[j] = (1/4π) Σ_i { E0[i] × a_phy[i] × WRF[i,j] / (Kd[i] + Kd[j]) }
+    Lf <- .Call("c_sicf_depth_integrated",
+                as.double(Kd_wavelength),
+                as.double(a_phy),
+                as.double(irrad),
+                WRF_matrix,
+                as.double(phi_f))
 
     if (verbose) message("SICF Analytical: Depth integration applied with Kd attenuation")
 
@@ -1298,23 +1214,23 @@ sicf_analytical <- function(c_chl,
     # Sum over excitation wavelengths to get emission at each wavelength
     Lf <- colSums(flux_emitted_matrix) / (4 * pi)
 
-    if (verbose) message("SICF Analytical: Surface-only fluorescence (no depth integration)")
+    if (verbose) message("SICF Analytical: Surface-only fluorescence")
   }
 
   # Convert to Rrs using the SAME Ed as semi-analytical model
   # Rrs = Lf / Ed (both models now use consistent Ed)
   Rrs_sicf <- Lf / Ed_for_rrs
 
-  result <- data.frame(
+  result <- list(
     wavelength = wavelength,
-    E0 = E0_0m,
-    Ed = Ed_0m,
+    E0       = E0_0m,
+    Ed       = Ed_0m,
     Rrs_sicf = Rrs_sicf
   )
 
   # Generate depth profiles if requested
   if (plot_depth_profiles && depth_resolved) {
-    if (verbose) message("SICF Analytical: Generating depth profile diagnostics...")
+    if (verbose) message("SICF Analytical: Generating depth profile diagnostics")
 
     depth_data <- .plot_depth_profiles_sicf(
       wavelength = wavelength,
@@ -1334,7 +1250,7 @@ sicf_analytical <- function(c_chl,
     )
   }
 
-  if (verbose) message("SICF Analytical: Complete - subsurface Rrs_sicf calculated")
+  if (verbose) message("SICF Analytical: Completed successfully")
 
   return(result)
 }

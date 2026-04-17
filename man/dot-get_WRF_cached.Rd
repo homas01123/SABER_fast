@@ -2,20 +2,18 @@
 % Please edit documentation in R/fct_forward_inel.R
 \name{.get_WRF_cached}
 \alias{.get_WRF_cached}
-\title{Get Cached WRF with Interpolation}
+\title{Get Cached WRF Base Matrix}
 \usage{
-.get_WRF_cached(wavelength, phi_f)
+.get_WRF_cached(wavelength)
 }
 \arguments{
 \item{wavelength}{Vector of wavelengths (nm)}
-
-\item{phi_f}{Quantum yield value}
 }
 \value{
-WRF matrix (wavelength x wavelength)
+WRF base matrix (N x N, phi_f = 1)
 }
 \description{
-Retrieve WRF matrix from cache, using linear interpolation if exact phi_f
-value is not cached.
+Returns the pre-computed base WRF matrix (phi_f = 1).  The caller is
+responsible for scaling by the actual phi_f value.
 }
 \keyword{internal}

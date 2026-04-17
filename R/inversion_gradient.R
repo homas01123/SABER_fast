@@ -1,34 +1,60 @@
-#' Perform deterministic inversion based on Gradient-based/Newtown-based optimization methods.
+#' Retrieve bio-optical parameters via deterministic optimisation
+#'
+#' Inverts sub-surface \eqn{R_{rs}} against a semi-analytical forward model
+#' using gradient-based or derivative-free optimisers.  Returns MAP estimates
+#' and approximate standard deviations derived from the Hessian (or the
+#' var-cov matrix returned by the Levenberg-Marquardt solver).
+#'
+#' @param rrs          Data frame with columns \code{wavelength} \[nm\] and
+#'   \code{rrs_0m} \[sr\eqn{^{-1}}\].
+#' @param forward_model  One of \code{"am03"}, \code{"am03_sicf"}, or
+#'   \code{"lee98"}.
+#' @param objective_fct  Objective: \code{"log-ll"} (Gaussian log-likelihood),
+#'   \code{"rss"} (residual sum of squares), or \code{"lee99"} (spectral error
+#'   index).
+#' @param optim_mtd  Optimisation algorithm: \code{"L-BFGS-B"},
+#'   \code{"Nelder-Mead"}, \code{"levenberg-marqardt"}, or \code{"auglag"}.
+#' @param par_inversed  Character vector of parameters to retrieve
+#'   (e.g. \code{c("chl", "a_dg_440", "bb_p_550")}).
+#' @param par_fixed  Named list of parameters held fixed.  Must not overlap
+#'   with \code{par_inversed}.
+#' @param lower_b  Named numeric lower bounds.  Required for \code{"L-BFGS-B"};
+#'   auto-filled from \code{par_inversed} values otherwise.
+#' @param upper_b  Named numeric upper bounds.  Same semantics as \code{lower_b}.
+#' @param init_val  Numeric initial values, in the same order as
+#'   \code{par_inversed}.
+#' @param verbose  Logical.  Print optimiser diagnostics?  Default \code{FALSE}.
+#' @param log_prior_fn  Optional \code{function(par)} returning the log-prior
+#'   for the inverted parameters.  When supplied the optimiser minimises
+#'   \eqn{-(log\_ll + log\_prior)}, i.e. MAP estimation.  \code{NULL} (default)
+#'   gives standard MLE.
+#' @param spectral_weights  Optional named numeric vector of per-band weights
+#'   (see \code{\link{create_spectral_weights}}).
+#' @param lat,lon,date_time  Latitude [°N], longitude [°E], and UTC
+#'   \code{POSIXct} timestamp.  Required when
+#'   \code{forward_model = "am03_sicf"}.
+#'
+#' @return Named numeric vector of MAP estimates followed by their SDs:
+#'   \code{c(chl = 2.1, a_dg_440 = 0.08, ..., chl_sd = 0.4, ...)}.
+#'
+#' @examples
+#' \dontrun{
+#' cfg <- make_inversion_params(depth_m = NA, rrs_df = rrs_obs)
+#' est <- inverse_gradient(
+#'   rrs           = rrs_obs,
+#'   forward_model = cfg$fwd_model,
+#'   objective_fct = "log-ll",
+#'   optim_mtd     = "L-BFGS-B",
+#'   par_inversed  = cfg$par_inv,
+#'   par_fixed     = cfg$par_fixed,
+#'   lower_b       = cfg$lower_b,
+#'   upper_b       = cfg$upper_b,
+#'   init_val      = cfg$init_val,
+#'   log_prior_fn  = cfg$log_prior_fn
+#' )
+#' }
 #'
 #' @author Soham Mukherjee, Raphael Mabit
-#'
-#' @param rrs A tibble with the remote sensing reflectance data.
-#' @param forward_model c("am03", "lee98")
-#' @param objective_fct c("log-ll", "SSR", "lee99") SSR is not implemented in the code
-#' @param optim_mtd c("nelder-mead", "BFGS", "CG", "L-BFGS-B", "sann", "brent","levenberg-marqardt", "auglag")
-#' @param par_inversed a tibble with the initial parameter to be inverted.
-#' @param par_fixed a tibble with parameter considered known, hence not retrieved during
-#'  optimization. If defined here they must not be defined in `par_inversed`.
-#' @param lower_b lower boundary for `optim_mtd = "L-BFGS-B"`.
-#' If not provided will be calculated in `parse_inverse_parameter`.
-#' @param init_val Initial values for parameters to be inverted.
-#' @param upper_b same as `lower_b` but for maximum possible values..
-#' @param verbose Boolean, if TRUE prints additional information
-#' @param return_full_output logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)
-#' @param log_prior_fn Optional `function(par)` returning the log-prior density
-#'   for the named inverted-parameter vector.  When supplied the optimiser
-#'   minimises `-(log_ll + log_prior)`, i.e. it finds the MAP estimate.
-#'   Typical priors to pass:
-#'   \itemize{
-#'     \item Lognormal on OAC scalars: `dlnorm(par[["chl"]], log(1), 1.5, log=TRUE)`
-#'     \item Beta on a single benthic mixing fraction: `dbeta(par[["mix_sand"]], 2, 2, log=TRUE)`
-#'     \item Soft Dirichlet on 3 fractions: sum of `(alpha-1)*log(x_i)` terms
-#'       plus a quadratic sum-to-one penalty
-#'   }
-#'   Set to NULL (default) for standard MLE behaviour.
-#' @return A named vector with the maximum likelihood estimates and their standard deviations.
-#'         If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties
-#'
 #' @export
 inverse_gradient <- function(
     rrs,
@@ -41,12 +67,14 @@ inverse_gradient <- function(
     init_val = NULL,
     upper_b = NULL,
     verbose = F,
-    return_full_output = FALSE,
     log_prior_fn = NULL,
-    spectral_weights = NULL) {
+    spectral_weights = NULL,
+    lat = NULL,
+    lon = NULL,
+    date_time = NULL) {
       
   rlang::inform(paste0("\033[0;33m", "###################################################################", "\033[0m", "\n"))
-  rlang::inform(paste0("\033[0;39m", "########### ALL GOOD THINGS ARE WILD & FREE, LET'S RUN FREE #######", "\033[0m", "\n"))
+  rlang::inform(paste0("\033[0;39m", "########### ALL GOOD THINGS ARE WILD & FREE #######", "\033[0m", "\n"))
   rlang::inform(paste0("\033[0;32m", "###################################################################", "\033[0m", "\n"))
 
   # Auto-add phi_f if using am03_sicf model and phi_f not in par_inversed
@@ -56,6 +84,14 @@ inverse_gradient <- function(
     lower_b <- c(lower_b, 0.005)
     upper_b <- c(upper_b, 0.03)
     if (!is.null(init_val)) init_val <- c(init_val, 0.02)
+  }
+
+  # Inject lat/lon/date_time into par_fixed for SICF forward model
+  if (forward_model == "am03_sicf") {
+    if (is.null(par_fixed)) par_fixed <- list()
+    if (!is.null(lat)       && !"lat"       %in% names(par_fixed)) par_fixed[["lat"]]       <- lat
+    if (!is.null(lon)       && !"lon"       %in% names(par_fixed)) par_fixed[["lon"]]       <- lon
+    if (!is.null(date_time) && !"date_time" %in% names(par_fixed)) par_fixed[["date_time"]] <- as.numeric(date_time)
   }
 
   # Separate numeric and non-numeric parameters from par_fixed
@@ -130,31 +166,65 @@ inverse_gradient <- function(
   }
 
   if (optim_mtd == "levenberg-marqardt") {
-    # Note: Does not support bounds directly
+    # marqLevAlg has no bounds support. Running in raw parameter space causes:
+    #   1. Negative probes → log(negative) = NaN in log_prior_fn / log_ll
+    #   2. Parameters spanning 4+ decades → near-singular Hessian → bad SEs
+    #
+    # Fix: log-reparametrize all positive-definite parameters (OAC + h_w + sd).
+    # Benthic fractions (r_rs_b_*, mix_sand) live in [0,1] and stay in natural
+    # space — they rarely go negative from a good starting point.
+    #
+    # Delta method converts log-space SEs back to natural-space SEs:
+    #   se_natural[i] = par_natural[i] * se_log[i]   (for log-transformed params)
+
+    is_log_par <- !grepl("^r_rs_b_", par_inversed) & par_inversed != "mix_sand"
+    log_idx    <- which(is_log_par)
+
+    # Transform init values: log for positive-definite params
+    par_lm          <- par
+    par_lm[log_idx] <- log(par[log_idx])
+
+    # Objective wrapper: accepts log-space inputs, calls raw objective with
+    # back-transformed (natural-space) values
+    minimization_fct_log <- local({
+      fn      <- minimization_fct
+      log_idx <- log_idx
+      function(p) {
+        p_nat          <- p
+        p_nat[log_idx] <- exp(p[log_idx])
+        fn(p_nat)
+      }
+    })
 
     lm_result <- marqLevAlg::marqLevAlg(
-      b = par,
-      fn = minimization_fct,
-      minimize = TRUE,  # Explicitly set minimize flag
-      print.info = F
+      b          = par_lm,
+      fn         = minimization_fct_log,
+      minimize   = TRUE,
+      print.info = FALSE
     )
 
-    n_params <- length(par)
-    # Fill in the lower triangular part from the vector
-    varcov_matrix[lower.tri(varcov_matrix, diag = TRUE)] <- lm_result$v
+    # Back-transform to natural space
+    par_opt          <- lm_result$b
+    par_opt[log_idx] <- exp(lm_result$b[log_idx])
 
-    # Make it symmetric by copying lower triangle to upper triangle
-    varcov_matrix[upper.tri(varcov_matrix)] <- t(varcov_matrix)[upper.tri(varcov_matrix)]
+    # Reconstruct symmetric var-cov from lower-triangular vector (log-space)
+    n_params     <- length(par_lm)
+    varcov_log   <- matrix(0, nrow = n_params, ncol = n_params)
+    varcov_log[lower.tri(varcov_log, diag = TRUE)] <- lm_result$v
+    varcov_log[upper.tri(varcov_log)] <- t(varcov_log)[upper.tri(varcov_log)]
 
-    # Create optim_result structure compatible with other methods
+    lm_varcov_is_direct <- lm_result$istop %in% c(1L, 3L)
+
     optim_result <- list(
-      par = lm_result$b,
-      value = lm_result$fn.value,
-      convergence = ifelse(lm_result$istop == 1, 0, 1),  # 0 = success, 1 = failure
-      message = lm_result$message,
-
-      # Store variance-covariance matrix for uncertainty calculation
-      varcov = varcov_matrix
+      par              = par_opt,
+      value            = lm_result$fn.value,
+      convergence      = ifelse(lm_result$istop == 1L, 0, 1),
+      message          = lm_result$message,
+      varcov           = varcov_log,
+      varcov_is_direct = lm_varcov_is_direct,
+      # stored for delta-method SE conversion in the uncertainty block below
+      is_log_par       = is_log_par,
+      par_natural      = par_opt
     )
   }
 
@@ -216,14 +286,40 @@ inverse_gradient <- function(
   param_estimate <- optim_result$par
 
   param_sd <- tryCatch({
-    # Check for singular matrix
-    if (abs(det(hessian_inverse)) < 1e-5 | abs(det(hessian_inverse)) > 1e10) {
-      warning("Hessian is nearly singular - using pseudoinverse")
-      varcov <- MASS::ginv(hessian_inverse)  # Generalized inverse
+    if (optim_mtd == "levenberg-marqardt") {
+      # hessian_inverse is the log-space var-cov (or Hessian) from marqLevAlg.
+      # Two cases depending on istop:
+      #   varcov_is_direct = TRUE  (istop 1): v is already the inverted Hessian
+      #   varcov_is_direct = FALSE (istop 2/3/4): v is raw Hessian, must solve()
+      # In BOTH cases we must apply the delta method because the optimisation
+      # ran in log-space for positive-definite parameters.
+      if (isTRUE(optim_result$varcov_is_direct)) {
+        varcov_log <- hessian_inverse                       # already var-cov
+      } else {
+        if (abs(det(hessian_inverse)) < 1e-10) {
+          warning("L-M log-space Hessian is singular - using pseudoinverse for SEs")
+          varcov_log <- MASS::ginv(hessian_inverse)
+        } else {
+          varcov_log <- solve(hessian_inverse)
+        }
+      }
+      # Delta method: se_natural[i] = par_natural[i] * se_log[i]
+      se_log                          <- sqrt(abs(diag(varcov_log)))
+      se_nat                          <- se_log
+      se_nat[optim_result$is_log_par] <- optim_result$par_natural[optim_result$is_log_par] *
+                                           se_log[optim_result$is_log_par]
+      se_nat
     } else {
-      varcov <- solve(hessian_inverse)
+      # L-BFGS-B / Nelder-Mead: hessian_inverse is the natural-space Hessian of
+      # -log L computed by numDeriv::hessian().  Invert to get var-cov.
+      if (abs(det(hessian_inverse)) < 1e-5 | abs(det(hessian_inverse)) > 1e10) {
+        warning("Hessian is nearly singular - using pseudoinverse")
+        varcov <- MASS::ginv(hessian_inverse)
+      } else {
+        varcov <- solve(hessian_inverse)
+      }
+      sqrt(abs(diag(varcov)))
     }
-    sqrt(abs(diag(varcov)))  # Use abs() to handle numerical errors
   },
   error = myFun
   )
@@ -272,74 +368,6 @@ inverse_gradient <- function(
     time_taken <- end.time - start.time
     rlang::inform(glue::glue("time.elapsed: ", time_taken))
     # return(list(mle, "convergence"= convergence))
-  }
-
-  # If using am03_sicf model with full output, compute optical properties
-  if (forward_model == "am03_sicf" && return_full_output) {
-    
-    # Extract parameter estimates (without _sd suffix)
-    par_names <- par_inversed
-    par_values <- par_estimates[par_names]
-    
-    # Combine with fixed parameters
-    # Convert par_fixed from list to numeric vector if needed
-    if (!is.null(par_fixed)) {
-      if (is.list(par_fixed)) {
-        par_fixed_vec <- unlist(par_fixed)
-        # Preserve names from list
-        if (is.null(names(par_fixed_vec))) {
-          names(par_fixed_vec) <- names(par_fixed)
-        }
-      } else {
-        par_fixed_vec <- par_fixed
-      }
-      par_complete <- c(par_values, par_fixed_vec)
-      par_complete <- par_complete[order(names(par_complete))]
-    } else {
-      par_complete <- par_values
-    }
-    
-    # Prepare inputs
-    inputs <- input_am03_sicf(par_complete, rrs, par_meta)
-    inputs$return_components <- TRUE
-    
-    # Run forward model
-    forward_result <- forward_am03_sicf(
-      wavelength = inputs$wavelength,
-      iop = inputs$iop,
-      water_type = inputs$water_type,
-      theta_view = inputs$theta_view,
-      theta_sun = inputs$theta_sun,
-      h_w = inputs$h_w,
-      r_b = inputs$r_b,
-      chl = inputs$chl,
-      a_dg_443 = inputs$a_dg_443,
-      phi_f = inputs$phi_f,
-      include_sicf = inputs$include_sicf,
-      lat = inputs$lat,
-      lon = inputs$lon,
-      date_time = inputs$date_time,
-      sicf_model = inputs$sicf_model,
-      depth_integration = inputs$depth_integration,
-      return_components = TRUE
-    )
-    
-    # Extract optical properties
-    optical_properties <- list(
-      Ed_0m = forward_result$Ed_0m,
-      E0_0m = forward_result$E0_0m,
-      PAR = forward_result$PAR,
-      wavelength = forward_result$wavelength
-    )
-    
-    # Return full output
-    return(list(
-      par_estimates = par_estimates,
-      rrs_modeled = forward_result$rrs_total,
-      rrs_elastic = forward_result$rrs_elastic,
-      rrs_sicf = forward_result$rrs_sicf,
-      optical_properties = optical_properties
-    ))
   }
 
   return(par_estimates)

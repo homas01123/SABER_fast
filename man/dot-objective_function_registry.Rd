@@ -3,7 +3,7 @@
 \docType{data}
 \name{.objective_function_registry}
 \alias{.objective_function_registry}
-\title{Error Function Registry}
+\title{Objective Function Registry}
 \format{
 An object of class \code{environment} of length 3.
 }
@@ -11,6 +11,6 @@ An object of class \code{environment} of length 3.
 .objective_function_registry
 }
 \description{
-List of error functions available to SABER
+List of objective functions available to SABER
 }
 \keyword{datasets}

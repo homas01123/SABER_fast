@@ -4,12 +4,12 @@
 #' Sun-Induced Chlorophyll Fluorescence (SICF). Also returns intermediate
 #' optical properties: Ed, E0, and PAR.
 #'
-#' @param wavelength Vector of wavelengths [nm]
+#' @param wavelength Vector of wavelengths \[nm\]
 #' @param iop List with elements `a` and `bb`, same length as wavelength
 #' @param water_type Either 1 or 2 (default = 2)
-#' @param theta_sun Sun zenith angle [degrees]
-#' @param theta_view Sensor view angle [degrees]
-#' @param h_w Optional: water depth [m] (enables shallow mode)
+#' @param theta_sun Sun zenith angle \[degrees\]
+#' @param theta_view Sensor view angle \[degrees\]
+#' @param h_w Optional: water depth \[m\] (enables shallow mode)
 #' @param r_b Optional: bottom reflectance vector (same length as wavelength)
 #' @param chl Chlorophyll-a concentration [mg/m³] (required for SICF)
 #' @param a_dg_443 CDOM+NAP absorption at 443nm [1/m] (required for SICF)
@@ -174,60 +174,6 @@ forward_am03_sicf <- function(wavelength, iop, water_type = 2,
     r_b = r_b
   )
 
-  # # ========================================================================
-  # # PART 2: Calculate Ed and E0 using Gregg & Carder
-  # # ========================================================================
-  #
-  # # Load Gregg & Carder data
-  # Cops::GreggCarder.data()
-  #
-  # # Extract date/time components
-  # jday_no <- lubridate::yday(date_time)
-  # time_no <- format(date_time, "%T")
-  # time_dec <- sapply(strsplit(as.character(time_no), ":"), function(x) {
-  #   x <- as.numeric(x)
-  #   x[1] + x[2]/60
-  # })
-  #
-  # # Calculate Ed at 0+ using Gregg & Carder
-  # Ed_gc <- tryCatch({
-  #   Cops::GreggCarder.f(
-  #     the = theta_sun,
-  #     lam.sel = wavelength,
-  #     hr = time_dec,
-  #     jday = jday_no,
-  #     rlon = lon,
-  #     rlat = lat,
-  #     debug = FALSE
-  #   )
-  # }, error = function(e) {
-  #   warning("Gregg & Carder Ed calculation failed: ", e$message)
-  #   return(NULL)
-  # })
-  #
-  # if (!is.null(Ed_gc) && !all(is.na(Ed_gc))) {
-  #   Ed0_0p <- Ed_gc$Ed      # Total Ed at 0+
-  #   Ed0_dir_0p <- Ed_gc$Edir  # Direct component
-  #   Ed0_dif_0p <- Ed_gc$Edif  # Diffuse component
-  #
-  #   # Calculate Fresnel reflectance
-  #   rhoF <- Cops::GreggCarder.sfcrfl(rad = 180/pi, theta = theta_sun, ws = 5)
-  #
-  #   # Convert Ed from 0+ to 0- (subsurface)
-  #   Ed_0m <- (Ed0_dir_0p * (1 - rhoF$rod)) + (Ed0_dif_0p * (1 - rhoF$ros))
-  #
-  #   # Calculate E0 (scalar irradiance) at surface
-  #   # E0 ≈ Ed × (1 + 1/μ_d) where μ_d is average cosine for diffuse light
-  #   mu_d <- 0.85  # Typical value for clear sky
-  #   E0_0m <- Ed_0m * (1 + 1/mu_d)
-  #
-  # } else {
-  #   warning("Ed calculation failed, returning NA for Ed, E0, and PAR")
-  #   Ed_0m <- rep(NA_real_, length(wavelength))
-  #   E0_0m <- rep(NA_real_, length(wavelength))
-  # }
-
-
   # ========================================================================
   # PART 3: Calculate SICF Component
   # ========================================================================
@@ -316,15 +262,15 @@ forward_am03_sicf <- function(wavelength, iop, water_type = 2,
     E0_0m <- NULL
   }
 
+  # Early return for the hot inversion path — skip PAR computation entirely
+  if (!return_components) {
+    return(rrs_total)
+  }
 
   # ========================================================================
   # PART 4: Calculate PAR (Photosynthetically Available Radiation)
+  # Only reached when return_components = TRUE (diagnostic / full-output calls)
   # ========================================================================
-
-  # PAR is integrated over 400-700 nm
-  # Convert from W/m²/nm to μmol photons/m²/s
-  # E [μmol/m²/s] = ∫ Ed(λ) × λ/(h×c×Na) dλ
-  # Where h = Planck's constant, c = speed of light, Na = Avogadro's number
 
   if (!all(is.na(Ed_0m))) {
     # Constants
@@ -364,22 +310,18 @@ forward_am03_sicf <- function(wavelength, iop, water_type = 2,
   }
 
   # ========================================================================
-  # PART 5: Return Results
+  # PART 5: Return Results (return_components = TRUE only — see early return above)
   # ========================================================================
 
-  if (return_components) {
-    return(list(
-      rrs_total = rrs_total,
-      rrs_elastic = rrs_elastic,
-      rrs_sicf = rrs_sicf,
-      Ed_0m = Ed_0m,
-      E0_0m = E0_0m,
-      PAR = PAR,
-      wavelength = wavelength
-    ))
-  } else {
-    return(rrs_total)
-  }
+  return(list(
+    rrs_total = rrs_total,
+    rrs_elastic = rrs_elastic,
+    rrs_sicf = rrs_sicf,
+    Ed_0m = Ed_0m,
+    E0_0m = E0_0m,
+    PAR = PAR,
+    wavelength = wavelength
+  ))
 }
 
 
@@ -439,8 +381,7 @@ input_am03_sicf <- function(par, rrs, par_meta = NULL) {
   # Calculate a_dg at 443nm
   # a_dg = a_g + a_nap at 443nm (approximately 440nm)
   a_dg_440 <- if ("a_dg_440" %in% names(par)) par["a_dg_440"] else 0
-  a_nap_440 <- if ("a_nap_440" %in% names(par)) par["a_nap_440"] else 0
-  a_dg_443 <- a_dg_440 + a_nap_440
+  a_dg_443 <- a_dg_440
 
   # Extract geometry info
   lat <- if ("lat" %in% names(par)) par["lat"] else 49
@@ -481,5 +422,3 @@ input_am03_sicf <- function(par, rrs, par_meta = NULL) {
     return_components = FALSE
   )
 }
-
-

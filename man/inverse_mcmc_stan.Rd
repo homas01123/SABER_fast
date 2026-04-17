@@ -23,7 +23,7 @@ inverse_mcmc_stan(
 )
 }
 \arguments{
-\item{rrs}{data-frame with columns: wavelength \link{nm} and rrs_0m \link{1/sr}}
+\item{rrs}{data-frame with columns: wavelength [nm] and rrs_0m [1/sr]}
 
 \item{forward_model}{Forward model name (default = "am03")}
 

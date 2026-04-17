@@ -10,7 +10,7 @@ log_ll <- function(modelled, observed, sd, weights = NULL) {
   sd_eff <- sd / sqrt(weights)
   return(
     sum(
-      dnorm(x = 10000 * observed, mean = 10000 * modelled, sd = sd_eff, log = TRUE)
+      dnorm(x = observed, mean = modelled, sd = sd_eff, log = TRUE)
     )
   )
 }
@@ -19,8 +19,10 @@ log_ll <- function(modelled, observed, sd, weights = NULL) {
 #'
 #' @return the residual sum of square
 
-rss <- function(modelled, observed) {
-  return(sum((observed - modelled)^2, na.rm = TRUE))
+rss <- function(modelled, observed, weights = NULL) {
+  if (is.null(weights) || length(weights) != length(observed))
+    weights <- rep(1.0, length(observed))
+  return(sum(weights * (observed - modelled)^2, na.rm = TRUE))
 }
 
 #' lee 1998 spectral error index

@@ -1,7 +1,7 @@
 #' iop_from_oac
 #' compute Inherent Optical Proprieties from Optically Active constituents.
 #'
-#' @param wavelength Numeric vector of wavelengths [nm]
+#' @param wavelength Numeric vector of wavelengths \[nm\]
 #' @param par a vector with name {chl, a_dg_440, a_nap_440, bb_p_550}. Optionally provide a_g, bb_p slope with names {a_dg_s, a_nap_s, bb_p_gamma}.
 #' Total IOP will be computed with the combination of oac you provide.
 #' If you don't provide any, the returned value will be equal to the pure water IOP.

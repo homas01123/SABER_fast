@@ -2,15 +2,16 @@
 % Please edit documentation in R/registry.R
 \name{register_input_preparer}
 \alias{register_input_preparer}
-\title{Register a new input preparation}
+\title{Register a new input preparer}
 \usage{
 register_input_preparer(name, fn)
 }
 \arguments{
-\item{name}{Name of the input preparation (must end with *input_\*modelName\**)}
+\item{name}{Name of the preparer; must follow the pattern \code{input_<modelName>}.}
 
-\item{fn}{A function taking model parameters and returning model inputs}
+\item{fn}{Function \code{f(par, rrs, par_meta)} returning a named list of
+forward-model inputs.}
 }
 \description{
-Register a new input preparation
+Register a new input preparer
 }

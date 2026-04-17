@@ -2,12 +2,12 @@
 #'
 #' Computes Rrs below surface using analytical model from Albert & Mobley (2003)
 #'
-#' @param wavelength vector of wavelengths [nm]
+#' @param wavelength vector of wavelengths \[nm\]
 #' @param iop list with elements `a` and `bb`, same length as wavelength
 #' @param water_type either 1 or 2 (default = 2)
-#' @param theta_sun sun zenith angle [degrees]
-#' @param theta_view sensor view angle [degrees]
-#' @param h_w optional: water depth [m] (enables shallow mode)
+#' @param theta_sun sun zenith angle \[degrees\]
+#' @param theta_view sensor view angle \[degrees\]
+#' @param h_w optional: water depth \[m\] (enables shallow mode)
 #' @param r_b optional: bottom reflectance vector (same length as wavelength)
 #'
 #' @return numeric vector of subsurface Rrs

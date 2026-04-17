@@ -7,9 +7,9 @@
 register_objective_function(name, fn)
 }
 \arguments{
-\item{name}{Name of the error function}
+\item{name}{Name of the objective (e.g. \code{"log-ll"}, \code{"lee99"}).}
 
-\item{fn}{A function that returns a single numeric error value}
+\item{fn}{Function \code{f(modelled, observed, par, ...)} returning a scalar.}
 }
 \description{
 Register a new objective function

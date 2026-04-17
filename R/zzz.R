@@ -121,11 +121,11 @@
     log_ll(modelled = modelled, observed = observed, sd = par[["sd"]], weights = weights)
   })
 
-  register_objective_function("rss", function(modelled, observed, par) {
-    rss(modelled = modelled, observed = observed)
+  register_objective_function("rss", function(modelled, observed, par, weights = NULL) {
+    rss(modelled = modelled, observed = observed, weights = weights)
   })
 
-  register_objective_function("lee99", function(modelled, observed, par) {
+  register_objective_function("lee99", function(modelled, observed, par, weights = NULL) {
     lee99(modelled = modelled, observed = observed, wavelength = par[["wavelength"]])
   })
 }

@@ -11,6 +11,6 @@ An object of class \code{environment} of length 3.
 .input_preparer_registry
 }
 \description{
-List of forward modelsinput preparation available to SABER
+List of forward model input preparers available to SABER
 }
 \keyword{datasets}

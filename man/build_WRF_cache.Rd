@@ -4,16 +4,10 @@
 \alias{build_WRF_cache}
 \title{Build WRF Cache}
 \usage{
-build_WRF_cache(
-  wavelength,
-  phi_f_grid = seq(0.005, 0.1, by = 0.001),
-  verbose = TRUE
-)
+build_WRF_cache(wavelength, verbose = TRUE)
 }
 \arguments{
 \item{wavelength}{Vector of wavelengths (nm)}
-
-\item{phi_f_grid}{Vector of quantum yield values to cache (default: seq(0.005, 0.1, by = 0.001))}
 
 \item{verbose}{Print progress messages}
 }
@@ -21,6 +15,8 @@ build_WRF_cache(
 Invisible NULL (cache is stored in .WRF_cache environment)
 }
 \description{
-Pre-compute WRF matrices for a grid of quantum yield (phi_f) values.
-During inversion, WRF matrices are interpolated from this cache.
+Pre-computes a single base WRF matrix (phi_f = 1) for the given wavelength
+grid. The actual quantum yield is applied at compute time inside
+\code{sicf_analytical()}, exploiting the linearity
+WRF(i,j; phi_f) = phi_f * WRF_base(i,j).
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/objective_factory.R
 \name{objective_factory}
 \alias{objective_factory}
-\title{Make objective function from forward model and objective}
+\title{Build an objective / likelihood function from a forward model}
 \usage{
 objective_factory(
   model,
@@ -17,26 +17,38 @@ objective_factory(
 )
 }
 \arguments{
-\item{model}{Name of the forward model}
+\item{model}{Forward model name: \code{"am03"}, \code{"am03_sicf"}, or
+\code{"lee98"}.}
 
-\item{objective}{Name of the objective function}
+\item{objective}{Objective: \code{"log-ll"} (Gaussian log-likelihood) or
+\code{"lee99"} (spectral error index).}
 
-\item{rrs_observed}{Observed Rrs data}
+\item{rrs_observed}{Data frame with columns \code{wavelength} and
+\code{rrs_0m}.}
 
-\item{par_fixed}{Named list or data frame of fixed parameters}
+\item{par_inversed}{Character vector of inverted parameter names.}
 
-\item{minimize}{Logical, if TRUE returns negative objective for minimization}
+\item{par_fixed}{Named list of fixed parameters passed to the forward
+model.}
 
-\item{log_prior_fn}{Optional function \verb{function(par)} returning the log-prior
-density for the \strong{inverted} parameters (as a named numeric vector).
-When supplied and \code{minimize = TRUE}, the factory returns
-\code{-(log_ll + log_prior)}, i.e. MAP optimisation.
-When \code{minimize = FALSE} (MCMC likelihood path) the prior is ignored here
-because BayesianTools handles it via \code{createBayesianSetup(prior = ...)}.}
+\item{par_meta}{Named list of non-numeric metadata
+(\code{sicf_model}, \code{depth_integration}).  Used only for
+\code{"am03_sicf"}.}
+
+\item{minimize}{Logical.  Return \code{-objective} for minimisation?
+Default \code{FALSE} (returns log-likelihood for MCMC).}
+
+\item{log_prior_fn}{Optional \code{function(par)} returning the log-prior.
+Active only when \code{minimize = TRUE}; ignored on the MCMC path.}
+
+\item{spectral_weights}{Optional named numeric per-band weight vector
+(see \code{\link{create_spectral_weights}}).}
 }
 \value{
-A function returning the model objective/likelihood to be used in an optimization process
+A function \code{f(par)} → scalar objective value.
 }
 \description{
-Make objective function from forward model and objective
+Combines a registered forward model with an objective function into a single
+callable \code{f(par)}.  Used internally by \code{\link[=inverse_mcmc]{inverse_mcmc()}} and
+\code{\link[=inverse_gradient]{inverse_gradient()}}; exposed for advanced workflows.
 }

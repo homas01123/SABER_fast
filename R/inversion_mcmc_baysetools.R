@@ -108,8 +108,12 @@ make_bt_prior_shallow_nclass <- function(par_inversed, lower_b, upper_b, alpha =
       nb  <- sum(is_benthic)
       mat <- matrix(NA_real_, nrow = n, ncol = length(par_inversed))
       for (i in seq_len(n)) {
-        for (j in which(!is_benthic))
-          mat[i, j] <- exp(rnorm(1, mean = log_mid[j], sd = log_sd[j]))
+        for (j in which(!is_benthic)) {
+          repeat {
+            v <- exp(rnorm(1, mean = log_mid[j], sd = log_sd[j]))
+            if (v >= lower[j] && v <= upper[j]) { mat[i, j] <- v; break }
+          }
+        }
         g <- rgamma(nb, shape = alpha, rate = 1)
         g <- g / sum(g)
         mat[i, which(is_benthic)] <- g
@@ -213,27 +217,58 @@ make_bt_prior_shallow_2class_adaptive <- function(par_inversed, lower_b, upper_b
 }
 
 
-#' SABER inverse model using MCMC sampling
+#' Retrieve bio-optical parameters via MCMC sampling
 #'
-#' Retrieve optically deep water OSCs and benthic variables from input Rrs and wavelength
+#' Inverts sub-surface \eqn{R_{rs}} against a semi-analytical forward model
+#' using Bayesian MCMC (via \pkg{BayesianTools}).  Returns MAP estimates and
+#' posterior standard deviations.
 #'
-#' @param rrs data-frame of wavelengths [nm] and sub-surface Rrs (must be named as rrs_0m) [1/sr]
-#' @param forward_model the SA forward model to be used (e.g. "am03")
-#' @param par_inversed vector of parameter names to be inversed (e.g. c("chl", "a_dg_440", "bb_p_550"))
-#' @param prior prior function (see make_prior_bundle) or can set as NULL for uniform prior
-#' @param lower numeric vector containing lower bounds for each parameter in par_inversed. The order must match par_inversed.
-#' @param upper numeric vector containing upper bounds for each parameter in par_inversed. The order must match par_inversed.
-#' @param best numeric vector containing best guess values for each parameter in par_inversed. The order must match par_inversed.
-#' @param par_fixed named list of fixed parameters to be passed to the forward model (e.g. c(water_type = 2, theta_sun = 30, theta_view = 0...))
-#' @param iterations number of MCMC iterations (default = 10000, recommended > 15000)
-#' @param burnin number of burnin iterations (default = 2000)
-#' @param sampler MCMC sampler to be used (default = "DEzs", see BayesianTools documentation for other options)
-#' @param return_full_output logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)
-
-#' @return numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_dg_440 = 0.1, a_dg_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
-#'         If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties, mcmc_output
+#' @param rrs  Data frame with columns \code{wavelength} \[nm\] and
+#'   \code{rrs_0m} \[sr\eqn{^{-1}}\].
+#' @param forward_model  One of \code{"am03"}, \code{"am03_sicf"}, or
+#'   \code{"lee98"}.
+#' @param par_inversed  Character vector of parameters to retrieve
+#'   (e.g. \code{c("chl", "a_dg_440", "bb_p_550")}).
+#' @param prior  A BayesianTools prior object (e.g. from
+#'   \code{\link{make_bt_prior_deep}}) or \code{NULL} for a uniform prior
+#'   defined by \code{lower} / \code{upper}.
+#' @param lower  Named numeric lower bounds.  Used only when
+#'   \code{prior = NULL}.
+#' @param upper  Named numeric upper bounds.  Used only when
+#'   \code{prior = NULL}.
+#' @param best   Named numeric initial values.  Used only when
+#'   \code{prior = NULL}.
+#' @param par_fixed  Named list of parameters held fixed during inversion.
+#' @param iterations  Total MCMC iterations.  Default \code{10000}
+#'   (recommended \eqn{\ge 15000}).
+#' @param burnin  Burn-in iterations discarded before posterior summary.
+#'   Default \code{2000}.
+#' @param sampler  BayesianTools sampler name.  Default \code{"DEzs"}.
+#' @param spectral_weights  Optional named numeric vector of per-band weights
+#'   (see \code{\link{create_spectral_weights}}).
+#' @param lat,lon,date_time  Latitude [°N], longitude [°E], and UTC
+#'   \code{POSIXct} timestamp.  Required when
+#'   \code{forward_model = "am03_sicf"}.
 #'
-#' @references Mukherjee, S., Mabit, R. and Bélanger, S. (2025), A semi-analytical Bayesian estimate retrieval algorithm for the inversion of remote-sensing reflectance in optically deep and shallow waters. Limnol Oceanogr Methods. https://doi.org/10.1002/lom3.70004
+#' @return Named numeric vector of MAP estimates followed by posterior SDs:
+#'   \code{c(chl = 2.5, a_dg_440 = 0.10, ..., chl_sd = 0.3, ...)}.
+#'
+#' @examples
+#' \dontrun{
+#' cfg <- make_inversion_params(depth_m = NA, rrs_df = rrs_obs)
+#' est <- inverse_mcmc(
+#'   rrs           = rrs_obs,
+#'   forward_model = cfg$fwd_model,
+#'   par_inversed  = cfg$par_inv,
+#'   prior         = cfg$bt_prior,
+#'   par_fixed     = cfg$par_fixed,
+#'   iterations    = 15000,
+#'   burnin        = 3000
+#' )
+#' }
+#'
+#' @references Mukherjee, S., Mabit, R. and Bélanger, S. (2025).
+#'   Limnol. Oceanogr. Methods. \doi{10.1002/lom3.70004}
 #'
 #' @export
 inverse_mcmc <- function(
@@ -248,8 +283,10 @@ inverse_mcmc <- function(
     iterations = 10000,
     burnin = 2000,
     sampler = "DEzs",
-    return_full_output = FALSE,
-    spectral_weights = NULL) {
+    spectral_weights = NULL,
+    lat = NULL,
+    lon = NULL,
+    date_time = NULL) {
 
   # Auto-add phi_f if using am03_sicf model and phi_f not in par_inversed
   if (forward_model == "am03_sicf" && !"phi_f" %in% par_inversed) {
@@ -258,6 +295,14 @@ inverse_mcmc <- function(
     lower <- c(lower, 0.005)
     upper <- c(upper, 0.03)
     if (!is.null(best)) best <- c(best, 0.02)
+  }
+
+  # Inject lat/lon/date_time into par_fixed for SICF forward model
+  if (forward_model == "am03_sicf") {
+    if (is.null(par_fixed)) par_fixed <- list()
+    if (!is.null(lat)       && !"lat"       %in% names(par_fixed)) par_fixed[["lat"]]       <- lat
+    if (!is.null(lon)       && !"lon"       %in% names(par_fixed)) par_fixed[["lon"]]       <- lon
+    if (!is.null(date_time) && !"date_time" %in% names(par_fixed)) par_fixed[["date_time"]] <- as.numeric(date_time)
   }
 
   # Separate numeric and non-numeric parameters from par_fixed
@@ -318,71 +363,6 @@ inverse_mcmc <- function(
     c(map_values, estimates_sd),
     c(names(map_values), paste0(names(map_values), "_sd"))
   )
-
-  # If using am03_sicf model with full output, compute optical properties
-  if (forward_model == "am03_sicf" && return_full_output) {
-
-    # Combine MAP estimates with fixed parameters
-    # Convert par_fixed from list to numeric vector if needed
-    if (!is.null(par_fixed)) {
-      if (is.list(par_fixed)) {
-        par_fixed_vec <- unlist(par_fixed)
-        # Preserve names from list
-        if (is.null(names(par_fixed_vec))) {
-          names(par_fixed_vec) <- names(par_fixed)
-        }
-      } else {
-        par_fixed_vec <- par_fixed
-      }
-      par_complete <- c(map_values, par_fixed_vec)
-      par_complete <- par_complete[order(names(par_complete))]
-    } else {
-      par_complete <- map_values
-    }
-
-    # Prepare inputs
-    inputs <- input_am03_sicf(par_complete, rrs, par_meta)
-    inputs$return_components <- TRUE
-
-    # Run forward model
-    forward_result <- forward_am03_sicf(
-      wavelength = inputs$wavelength,
-      iop = inputs$iop,
-      water_type = inputs$water_type,
-      theta_view = inputs$theta_view,
-      theta_sun = inputs$theta_sun,
-      h_w = inputs$h_w,
-      r_b = inputs$r_b,
-      chl = inputs$chl,
-      a_dg_443 = inputs$a_dg_443,
-      phi_f = inputs$phi_f,
-      include_sicf = inputs$include_sicf,
-      lat = inputs$lat,
-      lon = inputs$lon,
-      date_time = inputs$date_time,
-      sicf_model = inputs$sicf_model,
-      depth_integration = inputs$depth_integration,
-      return_components = TRUE
-    )
-
-    # Extract optical properties
-    optical_properties <- list(
-      Ed_0m = forward_result$Ed_0m,
-      E0_0m = forward_result$E0_0m,
-      PAR = forward_result$PAR,
-      wavelength = forward_result$wavelength
-    )
-
-    # Return full output
-    return(list(
-      par_estimates = par_estimates,
-      rrs_modeled = forward_result$rrs_total,
-      rrs_elastic = forward_result$rrs_elastic,
-      rrs_sicf = forward_result$rrs_sicf,
-      optical_properties = optical_properties,
-      mcmc_output = out
-    ))
-  }
 
   return(par_estimates)
 }

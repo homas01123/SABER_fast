@@ -57,8 +57,9 @@ select_benthic_classes <- function(classes) {
   )
   
   load_r_rs_b(wavelength_vec, r_rs_b_matrix)
-  # Invalidate the interpolated cache so the next forward call rebuilds from the new matrix
-  tryCatch(pure_water_iop(1.0), error = function(e) NULL)
+  # Reset the interpolated cache; it will be rebuilt at the correct wavelength
+  # grid on the next call to iop_from_oac() or forward_am03().
+  .Call("c_reset_cache")
 
   # Store selected classes in options
   options(SABER.selected_classes = paste0("r_rs_b_", classes))
@@ -72,4 +73,31 @@ select_benthic_classes <- function(classes) {
 list_benthic_classes <- function() {
   data("r_rs_b_egsl", package = "SABER", envir = environment())
   unique(r_rs_b_egsl$class)
+}
+
+# Resolve benthic reflectance vector from a retrieved parameter vector.
+# Handles two cases:
+#   1. mix_sand  – 2-class linear mixing; selected_classes must have length 2.
+#   2. r_rs_b_*  – N-class fractions already in par_vec.
+# Returns a spectral r_b vector (same wavelength grid as the class data), or NULL.
+.resolve_benthic_fractions <- function(par_vec, selected_classes) {
+  nms     <- names(par_vec)
+  if (is.null(nms)) return(NULL)
+
+  # Case 1: 2-class mixing parameter
+  idx_mix <- which(nms == "mix_sand")
+  if (length(idx_mix) > 0) {
+    mix <- as.numeric(par_vec[[idx_mix[1]]])
+    if (is.na(mix)) return(NULL)
+    fracs <- setNames(c(mix, 1 - mix),
+                      c(selected_classes[1], selected_classes[2]))
+    return(compute_r_rs_b_lmm(fracs))
+  }
+
+  # Case 2: explicit per-class fractions
+  keep  <- grepl("^r_rs_b_", nms) & !grepl("_sd$", nms)
+  if (!any(keep)) return(NULL)
+  fracs <- setNames(as.numeric(unlist(par_vec[keep])), nms[keep])
+  if (all(is.na(fracs))) return(NULL)
+  compute_r_rs_b_lmm(fracs)
 }

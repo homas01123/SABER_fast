@@ -9,260 +9,260 @@ vignette: >
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
+  collapse  = TRUE,
+  comment   = "#>",
+  fig.width = 4,
+  fig.height = 4,
+  out.width = "100%"
 )
 ```
 
 ```{r setup}
-#load_all(".")
-library(SABER)
-library(readr)
+devtools::load_all(".")
 library(dplyr)
 library(plotly)
 library(BayesianTools)
 ```
 
-This vignette teaches the basics of forward and inverse radiative transfer modelling with SABER.
+This vignette walks through forward and inverse radiative transfer modelling with SABER. All examples use an optically shallow scenario with three benthic classes. Each section has a standard (`am03`) and a SICF-enabled (`am03_sicf`) variant side by side.
 
-## Forward modelling
+## Setup
 
-The SA paramterized forward model by Albert & Mobley 2003 (`"am03"`) is used here as the base RT forward model (tweaked for spectral slopes and bio-optical formulation) to generate spectral $R_\text{rs}$ from user-driven Optically Active Constituent (OAC). The forward modeling is seperated into two steps, first the OAC are converted to Inherent Optical Properties (IOP), then the IOP (and benthic information: $H$ and $R_\mathrm{B}$, where applicable) are used as input to the RT model to generate $R_\text{rs}$.
-
-### Computing the IOP from the OAC
-
-The first step is to choose a bio-optical model to compute the Inherent Optical Proprieties (IOP) from the OAC. To do that, SABER offer the `iop_from_oac` function. In this case we pass the spectral slopes with the OAC in a named vector `par`. *Details different options*
+Benthic classes must be loaded before the spectral cache is built. The next call to `iop_from_oac()` triggers cache initialisation at the analysis wavelength grid, after which `compute_r_rs_b_lmm()` returns $R_\mathrm{B}(\lambda)$ interpolated to those wavelengths.
 
 ```{r}
 wavelength <- seq(401, 749, 5)
 
-# Select benthic classes FIRST (before building cache)
 list_benthic_classes()
 select_benthic_classes(c("Sand_2019", "Eelgrass_2019", "Mud_2019"))
 
-# Without manual slope
-# oac <- tibble(
-#   name = c("chl", "a_g_440", "bb_p_550"),
-#   value = c(2.8, 4.3, 0.004)
-#   )
-# With manual slope
-oac <- tibble(
-  name = c("chl", "a_g_440", "bb_p_550", "a_g_s_g", "a_g_s_d", "bb_p_gamma"),
-  value = c(5, 0.9, 0.005, 0.014, 0.003, 0.5)
+oac_par <- c(
+  chl        = 5.0,
+  a_dg_440   = 0.9,
+  bb_p_550   = 0.005,
+  a_dg_s     = 0.014,
+  bb_p_gamma = 0.5
 )
 
-oac_vec <- stats::setNames(oac$value, oac$name)
+iop <- iop_from_oac(wavelength, par = oac_par)
 
-iop <- iop_from_oac(
-  wavelength,
-  par = oac_vec
-)
-
-iop_vec = tibble(wavelength = wavelength) %>%
-  bind_cols(as_tibble(iop))
-
-ply <- plot_ly(iop_vec) %>%
-  add_lines(
-    x = ~wavelength,
-    y = ~a,
-    name = "a_tot"
-  ) %>%
-  add_lines(
-    x = ~wavelength,
-    y = ~bb,
-    name = "bb_tot"
-  ) 
-ply
-```
-### Benthic reflectance
-
-SABER has complete support for optically shallow waters, where the benthic reflectance ($R_\mathrm{B}$) plays a crucial role. The $R_\mathrm{B}$ in SABER is calculated as a aerial fraction constrained sum of three pure benthic class spectra. The $R_\mathrm{B}$ can be calculated using `compute_r_rs_b_lmm` function in SABER.
-
-```{r}
-r_frac <- c("r_rs_b_Eelgrass_2019" = 0.25, "r_rs_b_Sand_2019" = 0.55, "r_rs_b_Mud_2019" = 0.20)
-
-r_rs_b <- compute_r_rs_b_lmm(r_frac)
+r_b <- compute_r_rs_b_lmm(c(
+  r_rs_b_Sand_2019     = 0.55,
+  r_rs_b_Eelgrass_2019 = 0.25,
+  r_rs_b_Mud_2019      = 0.20
+))
 
 plot_ly(x = wavelength) %>%
-  add_lines(y = r_rs_b)
+  add_lines(y = iop$a,  name = "a [m⁻¹]") %>%
+  add_lines(y = iop$bb, name = "bb [m⁻¹]")
+
+plot_ly(x = wavelength) %>%
+  add_lines(y = r_b, name = "R_B")
 ```
 
-### Runing the forward model
+## Forward modelling
 
-Next, the obtained spectral IOPs are input into the SA RT model (`"am03"`) to generate the $R_\text{rs}$. 
+### Standard elastic model (`am03`)
+
+`forward_am03()` computes sub-surface $R_\text{rs}$ from elastic scattering only. Non-NULL `h_w` and `r_b` activate the shallow-water treatment.
 
 ```{r}
-test_case <- tibble(
-  name = c("water_type", "theta_view", "theta_sun"),
-  value = c(2, 0, 20)
-)
-
-test_case_vec <- stats::setNames(test_case$value, test_case$name)
-
-rrs <- forward_am03(
+rrs_elastic <- forward_am03(
   wavelength = wavelength,
-  iop = iop,
-  water_type = test_case_vec["water_type"],
-  theta_view = test_case_vec["theta_view"],
-  theta_sun = test_case_vec["theta_sun"],
-
-  h_w = 5, #optically deep case
-  r_b = r_rs_b
-)
-rrs_vec <- tibble(
-  wavelength = wavelength,
-  rrs_0m = rrs
+  iop        = iop,
+  water_type = 2,
+  theta_sun  = 20,
+  theta_view = 0,
+  h_w        = 5,
+  r_b        = r_b
 )
 
-ply <- plot_ly(rrs_vec) %>%
-  add_lines(
-    x = ~wavelength,
-    y = ~rrs_0m
-  )
+# Add realistic noise function
+add_noise <- function(rrs, snr = 200) {
+  noise <- rnorm(length(rrs), mean = 0, sd = mean(rrs) / snr)
+  rrs + noise
+}
 
-ply
+rrs_df <- tibble(wavelength = wavelength, rrs_0m = add_noise(rrs_elastic))
+
+plot_ly(x = wavelength) %>%
+  add_lines(y = rrs_elastic, name = "am03")
 ```
 
+### SICF model (`am03_sicf`)
 
+`forward_am03_sicf()` adds the Sun-Induced Chlorophyll Fluorescence (SICF) component on top of the elastic signal. It requires `chl`, `a_dg_443`, and geographic/temporal metadata (`lat`, `lon`, `date_time`) to compute the subsurface irradiance field that drives fluorescence. Setting `return_components = TRUE` gives access to the individual elastic and SICF terms.
+
+```{r}
+rrs_sicf_out <- forward_am03_sicf(
+  wavelength        = wavelength,
+  iop               = iop,
+  water_type        = 2,
+  theta_sun         = 20,
+  theta_view        = 0,
+  h_w               = 5,
+  r_b               = r_b,
+  chl               = oac_par["chl"],
+  a_dg_443          = oac_par["a_dg_440"],
+  phi_f             = 0.02,
+  include_sicf      = TRUE,
+  sicf_model        = "semi_analytical",
+  depth_integration = TRUE,
+  lat               = 48.5,
+  lon               = -68.2,
+  date_time         = as.POSIXct("2022-07-15 12:00:00", tz = "UTC"),
+  return_components = TRUE
+)
+
+rrs_df_sicf <- tibble(wavelength = wavelength, rrs_0m = add_noise(rrs_sicf_out$rrs_total, snr = 200))
+
+plot_ly(x = wavelength) %>%
+  add_lines(y = rrs_sicf_out$rrs_elastic, name = "elastic") %>%
+  add_lines(y = rrs_sicf_out$rrs_sicf,    name = "SICF") %>%
+  add_lines(y = rrs_sicf_out$rrs_total,   name = "total")
+```
+
+The total spectrum from `am03_sicf` is used as the observed input for the SICF inversion below.
+
+```{r}
+rrs_df_sicf <- tibble(wavelength = wavelength, rrs_0m = rrs_sicf_out$rrs_total)
+```
 
 ## Inversion
 
-The inversion process consist in finding the optimal parameter vector that can be feed to the forward model, giving approximately exact $R_\mathrm{rs}$ used as input. Here, we have used two different approaches for the inversion: 
+`make_inversion_params()` builds all inputs (bounds, prior, fixed parameters, forward model selection) from a compact set of arguments. The `sicf` flag is the only switch needed to move between the two model families — everything else is resolved automatically.
 
-1. A deterministic approach based on gradient-based/Newtonian optimization (L-BFGS-B/CG, etc... method) to minimize an objective function (log-likelihood default here).
-
-2.a Bayesian framework to perform the inversion, where the posterior distribution of the parameters is sampled using  Markov-Chain Monte-Carlo (MCMC) sampling, informed with a proper prior and model likelihood.
-
-### Deterministic inversion
-
-The following chunk shows an illustration of a SABER inversion using gradient-based optimization method (L-BFGS-B) to minimize a log-likelihood objective function. The parameters to be inverted are passed in `par_to_inverse`, while the known parameters are fixed to known values in `par_fixed`. The boundaries of the prior/posterior are defined in `lower_b` and `upper_b`. The initial values for the parameters to be inverted are passed in `init_val`. 
+### Standard inversion (`am03`)
 
 ```{r}
-par_fixed <- c(
-  "water_type" = 2,
-  "theta_view" = 0,
-  "theta_sun" = 20
-  #, "a_g_s" = 0.017,
-  #"h_w" = NULL,
-  #"r_rs_b_saccharina" = NULL,
-  #"r_rs_b_cca" = NULL,
-  #"r_rs_b_gravel" = NULL
+cfg <- make_inversion_params(
+  depth_m = 5,
+  rrs_df        = rrs_df,
+  par_inv       = c("chl", "a_dg_440", "bb_p_550", "a_dg_s", "bb_p_gamma"
+                   ),
+  water_type    = 2,
+  theta_sun     = 20,
+  sicf          = FALSE, force_shallow = T
 )
+```
 
+**Gradient-based MAP**
 
-par_to_inverse <- c(#"theta_sun",
-  "chl", "a_g_440", "a_g_s",
-  #"a_g_s_d",
-  "bb_p_550", "bb_p_gamma",
-
- # "a_nap_440",  "a_nap_sd",
-
-   "h_w",  "r_rs_b_Eelgrass_2019" , "r_rs_b_Sand_2019", "r_rs_b_Mud_2019" ,
-
-  "sd"
-)
-
-lower = c(0.5, 0.1, 0.005, #0.0002,
-          0.002, 0.2,
-           0.5, 0.1, 0.1, 0.1,
-          0.0001
-)
-
-best = c(3, 0.75, 0.017, #0.0015,
-        0.005, 0.46,
-           4, 0.5, 0.1, 0.25,
-         0.1
-)
-
-upper = c(30, 1.5, 0.022, #0.0025,
-          0.015, 1,
-            12, 1, 1, 1,
-          10
-)
-
-test_inverse_grad <- inverse_gradient(
-  rrs = rrs_vec,
-  forward_model = "am03",
+```{r}
+result_grad <- inverse_gradient(
+  rrs           = rrs_df,
+  forward_model = cfg$fwd_model,
   objective_fct = "log-ll",
-  optim_mtd = "L-BFGS-B",
-  par_inversed = par_to_inverse,
-  par_fixed = par_fixed,
-  lower_b  = lower,
-  init_val = best,
-  upper_b  = upper,
-  verbose = TRUE
+  optim_mtd     = #"levenberg-marqardt",
+                  "L-BFGS-B",
+  par_inversed  = cfg$par_inv,
+  par_fixed     = cfg$par_fixed,
+  lower_b       = cfg$lower_b,
+  upper_b       = cfg$upper_b,
+  init_val      = cfg$init_val,
+  log_prior_fn  = cfg$log_prior_fn,
+  verbose  = FALSE
 )
-print(test_inverse_grad)
+print(format(result_grad, scientific = F))
 ```
 
-### MCMC inversion
-
-The following chunk shows an illustration of a SABER inversion using uniform prior (pass `NULL` in prior) and Gaussian likelihood. user-defined priors and random samplers can be obtained with `make_prior` and `make_prior_bundle` functions and then can be passed to the `inverse_mcmc` function. For rest of the arguements, the parameters to be inverted are passed in `par_to_inverse`, while the known parameters are fixed to known values in `par_fixed`. The boundaries of the prior/posterior are defined in `lower` and `upper`. The MCMC is run for 30,000 iterations with a burn-in of 5,000. The Differential Evolution sampler with snooker update (`"DEzs"`) is used here, but other samplers from the `BayesianTools` package can be used as well. 
+**MCMC**
 
 ```{r}
-test_inverse_mcmc = inverse_mcmc(
-  rrs = rrs_vec,
-  forward_model = "am03",
-  par_inversed = par_to_inverse,
-  prior = NULL,
-  lower = lower,
-  best = NULL,
-  upper = upper,
-  par_fixed = par_fixed,
-  iterations = 30000,
-  burnin = 5000,
-  sampler = "DEzs"
+result_mcmc <- inverse_mcmc(
+  rrs           = rrs_df,
+  forward_model = cfg$fwd_model,
+  par_inversed  = cfg$par_inv,
+  prior         = cfg$bt_prior,
+  par_fixed     = cfg$par_fixed,
+  iterations    = 30000,
+  burnin        = 10000,
+  sampler       = "DEzs"
 )
-print(test_inverse_mcmc)
+print(format(result_mcmc, scientific = F))
 ```
-### Checking inversion with AOP reconstruction using inversed parameters
 
-The SABER inversion estimated parameters are plugged into the `iop_from_oac` function and then into `forward_am03` function to simulate the $R_\mathrm{rs}$ and compare with the input one.
+**L2 products**
 
 ```{r}
-#AOP reconstruction with MCMC inversed parameters
-oac_mcmc <-test_inverse_mcmc[grep("sd$", names(test_inverse_mcmc), invert = T)]
-
-iop_mcmc <- iop_from_oac(
-  rrs_vec$wavelength,
-  oac_mcmc
+l2 <- compute_l2_products(
+  rrs_df      = rrs_df,
+  cfg         = cfg,
+  result_grad = result_grad,
+  result_mcmc = result_mcmc,
+  compute_iop = TRUE,
+  compute_kd  = TRUE,
+  plot_rrs    = TRUE,
+  plot_iop    = TRUE
 )
 
-rrs_mcmc <- forward_am03(
-  wavelength = wavelength,
-  iop = iop_mcmc,
-  water_type = test_case_vec["water_type"],
-  theta_view = test_case_vec["theta_view"],
-  theta_sun = test_case_vec["theta_sun"],
-  
-  h_w = NULL,
-  r_b = NULL
-)
-
-#AOP reconstruction with deterministic inversed parameters
-oac_grad <-test_inverse_grad[grep("sd$", (test_inverse_grad), invert = T)]
-
-iop_grad <- iop_from_oac(
-  rrs_vec$wavelength,
-  oac_grad
-)
-
-rrs_grad <- forward_am03(
-  wavelength = wavelength,
-  iop = iop_grad,
-  water_type = test_case_vec["water_type"],
-  theta_view = test_case_vec["theta_view"],
-  theta_sun = test_case_vec["theta_sun"],
-  
-  h_w = NULL,
-  r_b = NULL
-)
-
-ply <- plot_ly() %>%
-  add_lines(x = rrs_vec$wavelength, y = rrs_vec$rrs_0m, name = "rrs_input") %>%
-  add_lines(x = rrs_vec$wavelength, y = rrs_mcmc, name = "rrs_retrieved_mcmc") %>%
-  add_lines(x = rrs_vec$wavelength, y = rrs_grad, name = "rrs_retrieved_grad")
-
-ply
+l2$gof$grad
+l2$gof$mcmc
+l2$plots$rrs_recon
+l2$plots$iop
 ```
+
+### SICF inversion (`am03_sicf`)
+
+The only differences from the standard case: `sicf = TRUE` and the geographic/temporal metadata required to drive the irradiance model. `phi_f` (fluorescence quantum yield) is automatically added to `par_inv` by `make_inversion_params()`.
+
+```{r eval=FALSE}
+cfg_sicf <- make_inversion_params(
+  depth_m = 5,
+  rrs_df            = rrs_df_sicf,
+  par_inv           = c("chl", "a_dg_440", "bb_p_550", "a_dg_s", "bb_p_gamma"
+                   ),
+  water_type        = 2,
+  theta_sun         = 20,
+  sicf              = TRUE,
+  sicf_model        = "semi_analytical",
+  depth_integration = FALSE,
+  lat               = 48.5,
+  lon               = -68.2,
+  date_time         = as.POSIXct("2022-07-15 12:00:00", tz = "UTC"),
+  force_shallow     = TRUE
+)
+
+result_grad_sicf <- inverse_gradient(
+  rrs           = rrs_df_sicf,
+  forward_model = cfg_sicf$fwd_model,
+  objective_fct = "log-ll",
+  optim_mtd     = "levenberg-marqardt",
+  par_inversed  = cfg_sicf$par_inv,
+  par_fixed     = cfg_sicf$par_fixed,
+  lower_b       = cfg_sicf$lower_b,
+  upper_b       = cfg_sicf$upper_b,
+  init_val      = cfg_sicf$init_val,
+  log_prior_fn  = cfg_sicf$log_prior_fn
+)
+
+result_mcmc_sicf <- inverse_mcmc(
+  rrs           = rrs_df_sicf,
+  forward_model = cfg_sicf$fwd_model,
+  par_inversed  = cfg_sicf$par_inv,
+  prior         = cfg_sicf$bt_prior,
+  par_fixed     = cfg_sicf$par_fixed,
+  iterations    = 35000,
+  burnin        = 12000,
+  sampler       = "DEzs"
+)
+
+l2_sicf <- compute_l2_products(
+  rrs_df      = rrs_df_sicf,
+  cfg         = cfg_sicf,
+  result_grad = result_grad_sicf,
+  result_mcmc = result_mcmc_sicf,
+  compute_iop = TRUE,
+  compute_kd  = TRUE,
+  plot_rrs    = TRUE,
+  plot_iop    = TRUE
+)
+
+l2_sicf$gof$grad
+l2_sicf$gof$mcmc
+l2_sicf$plots$rrs_recon
+l2_sicf$plots$iop
+```
+
+The returned `l2` / `l2_sicf` lists have the same structure in both cases: `rrs_recon`, `gof` (with `rmse`, `mape`, `r2`), `iop`, `Kd`, and ggplot2 `plots` — all split into `$grad` and `$mcmc` sub-lists.
 

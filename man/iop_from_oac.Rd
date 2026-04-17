@@ -8,7 +8,7 @@ compute Inherent Optical Proprieties from Optically Active constituents.}
 iop_from_oac(wavelength, par)
 }
 \arguments{
-\item{wavelength}{Numeric vector of wavelengths \link{nm}}
+\item{wavelength}{Numeric vector of wavelengths [nm]}
 
 \item{par}{a vector with name {chl, a_dg_440, a_nap_440, bb_p_550}. Optionally provide a_g, bb_p slope with names {a_dg_s, a_nap_s, bb_p_gamma}.
 Total IOP will be computed with the combination of oac you provide.

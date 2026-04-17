@@ -2,7 +2,7 @@
 % Please edit documentation in R/inversion_gradient.R
 \name{inverse_gradient}
 \alias{inverse_gradient}
-\title{Perform deterministic inversion based on Gradient-based/Newtown-based optimization methods.}
+\title{Retrieve bio-optical parameters via deterministic optimisation}
 \usage{
 inverse_gradient(
   rrs,
@@ -15,54 +15,82 @@ inverse_gradient(
   init_val = NULL,
   upper_b = NULL,
   verbose = F,
-  return_full_output = FALSE,
   log_prior_fn = NULL,
-  spectral_weights = NULL
+  spectral_weights = NULL,
+  lat = NULL,
+  lon = NULL,
+  date_time = NULL
 )
 }
 \arguments{
-\item{rrs}{A tibble with the remote sensing reflectance data.}
+\item{rrs}{Data frame with columns \code{wavelength} [nm] and
+\code{rrs_0m} [sr\eqn{^{-1}}].}
 
-\item{forward_model}{c("am03", "lee98")}
+\item{forward_model}{One of \code{"am03"}, \code{"am03_sicf"}, or
+\code{"lee98"}.}
 
-\item{objective_fct}{c("log-ll", "SSR", "lee99") SSR is not implemented in the code}
+\item{objective_fct}{Objective: \code{"log-ll"} (Gaussian log-likelihood),
+\code{"rss"} (residual sum of squares), or \code{"lee99"} (spectral error
+index).}
 
-\item{optim_mtd}{c("nelder-mead", "BFGS", "CG", "L-BFGS-B", "sann", "brent","levenberg-marqardt", "auglag")}
+\item{optim_mtd}{Optimisation algorithm: \code{"L-BFGS-B"},
+\code{"Nelder-Mead"}, \code{"levenberg-marqardt"}, or \code{"auglag"}.}
 
-\item{par_inversed}{a tibble with the initial parameter to be inverted.}
+\item{par_inversed}{Character vector of parameters to retrieve
+(e.g. \code{c("chl", "a_dg_440", "bb_p_550")}).}
 
-\item{par_fixed}{a tibble with parameter considered known, hence not retrieved during
-optimization. If defined here they must not be defined in \code{par_inversed}.}
+\item{par_fixed}{Named list of parameters held fixed.  Must not overlap
+with \code{par_inversed}.}
 
-\item{lower_b}{lower boundary for \code{optim_mtd = "L-BFGS-B"}.
-If not provided will be calculated in \code{parse_inverse_parameter}.}
+\item{lower_b}{Named numeric lower bounds.  Required for \code{"L-BFGS-B"};
+auto-filled from \code{par_inversed} values otherwise.}
 
-\item{init_val}{Initial values for parameters to be inverted.}
+\item{init_val}{Numeric initial values, in the same order as
+\code{par_inversed}.}
 
-\item{upper_b}{same as \code{lower_b} but for maximum possible values..}
+\item{upper_b}{Named numeric upper bounds.  Same semantics as \code{lower_b}.}
 
-\item{verbose}{Boolean, if TRUE prints additional information}
+\item{verbose}{Logical.  Print optimiser diagnostics?  Default \code{FALSE}.}
 
-\item{return_full_output}{logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)}
+\item{log_prior_fn}{Optional \code{function(par)} returning the log-prior
+for the inverted parameters.  When supplied the optimiser minimises
+\eqn{-(log\_ll + log\_prior)}, i.e. MAP estimation.  \code{NULL} (default)
+gives standard MLE.}
 
-\item{log_prior_fn}{Optional \verb{function(par)} returning the log-prior density
-for the named inverted-parameter vector.  When supplied the optimiser
-minimises \code{-(log_ll + log_prior)}, i.e. it finds the MAP estimate.
-Typical priors to pass:
-\itemize{
-\item Lognormal on OAC scalars: \code{dlnorm(par[["chl"]], log(1), 1.5, log=TRUE)}
-\item Beta on a single benthic mixing fraction: \code{dbeta(par[["mix_sand"]], 2, 2, log=TRUE)}
-\item Soft Dirichlet on 3 fractions: sum of \code{(alpha-1)*log(x_i)} terms
-plus a quadratic sum-to-one penalty
-}
-Set to NULL (default) for standard MLE behaviour.}
+\item{spectral_weights}{Optional named numeric vector of per-band weights
+(see \code{\link{create_spectral_weights}}).}
+
+\item{lat, lon, date_time}{Latitude \link{°N}, longitude \link{°E}, and UTC
+\code{POSIXct} timestamp.  Required when
+\code{forward_model = "am03_sicf"}.}
 }
 \value{
-A named vector with the maximum likelihood estimates and their standard deviations.
-If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties
+Named numeric vector of MAP estimates followed by their SDs:
+\code{c(chl = 2.1, a_dg_440 = 0.08, ..., chl_sd = 0.4, ...)}.
 }
 \description{
-Perform deterministic inversion based on Gradient-based/Newtown-based optimization methods.
+Inverts sub-surface \eqn{R_{rs}} against a semi-analytical forward model
+using gradient-based or derivative-free optimisers.  Returns MAP estimates
+and approximate standard deviations derived from the Hessian (or the
+var-cov matrix returned by the Levenberg-Marquardt solver).
+}
+\examples{
+\dontrun{
+cfg <- make_inversion_params(depth_m = NA, rrs_df = rrs_obs)
+est <- inverse_gradient(
+  rrs           = rrs_obs,
+  forward_model = cfg$fwd_model,
+  objective_fct = "log-ll",
+  optim_mtd     = "L-BFGS-B",
+  par_inversed  = cfg$par_inv,
+  par_fixed     = cfg$par_fixed,
+  lower_b       = cfg$lower_b,
+  upper_b       = cfg$upper_b,
+  init_val      = cfg$init_val,
+  log_prior_fn  = cfg$log_prior_fn
+)
+}
+
 }
 \author{
 Soham Mukherjee, Raphael Mabit

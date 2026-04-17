@@ -57,10 +57,14 @@ SEXP c_iop_from_oac(SEXP wavelength_sexp, SEXP par_sexp) {
   double* bb_w_ptr = REAL(get_cached_bb_w());
 
   // Prepare output
-  SEXP a_out = PROTECT(Rf_allocVector(REALSXP, n)); nprotect++;
-  SEXP bb_out = PROTECT(Rf_allocVector(REALSXP, n)); nprotect++;
-  double* a_res = REAL(a_out);
-  double* bb_res = REAL(bb_out);
+  SEXP a_out     = PROTECT(Rf_allocVector(REALSXP, n)); nprotect++;
+  SEXP bb_out    = PROTECT(Rf_allocVector(REALSXP, n)); nprotect++;
+  SEXP a_phy_out = PROTECT(Rf_allocVector(REALSXP, n)); nprotect++;
+  SEXP a_dg_out  = PROTECT(Rf_allocVector(REALSXP, n)); nprotect++;
+  double* a_res     = REAL(a_out);
+  double* bb_res    = REAL(bb_out);
+  double* a_phy_res = REAL(a_phy_out);
+  double* a_dg_res  = REAL(a_dg_out);
 
   // Parse parameters
   int found;
@@ -121,18 +125,25 @@ SEXP c_iop_from_oac(SEXP wavelength_sexp, SEXP par_sexp) {
     }
 
     // Total
-    a_res[i] = aw_ptr[i] + a_phy + a_g + a_nap;
-    bb_res[i] = bb_w_ptr[i] + bb_p;
+    a_res[i]     = aw_ptr[i] + a_phy + a_g + a_nap;
+    bb_res[i]    = bb_w_ptr[i] + bb_p;
+    a_phy_res[i] = a_phy;
+    a_dg_res[i]  = a_g + a_nap;
   }
 
-  // Create output list
-  SEXP out = PROTECT(Rf_allocVector(VECSXP, 2)); nprotect++;
+  // Create output list (a, bb, a_phy, a_dg)
+  // NOTE: existing callers use $a and $bb by name — adding elements is safe.
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 4)); nprotect++;
   SET_VECTOR_ELT(out, 0, a_out);
   SET_VECTOR_ELT(out, 1, bb_out);
+  SET_VECTOR_ELT(out, 2, a_phy_out);
+  SET_VECTOR_ELT(out, 3, a_dg_out);
 
-  SEXP names = PROTECT(Rf_allocVector(STRSXP, 2)); nprotect++;
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, 4)); nprotect++;
   SET_STRING_ELT(names, 0, Rf_mkChar("a"));
   SET_STRING_ELT(names, 1, Rf_mkChar("bb"));
+  SET_STRING_ELT(names, 2, Rf_mkChar("a_phy"));
+  SET_STRING_ELT(names, 3, Rf_mkChar("a_dg"));
   Rf_setAttrib(out, R_NamesSymbol, names);
 
   UNPROTECT(nprotect);

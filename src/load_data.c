@@ -303,6 +303,20 @@ SEXP c_build_cache(SEXP wavelengths) {
     return R_NilValue;
 }
 
+// Reset the interpolated cache so the next wavelength-keyed call rebuilds it.
+// Called after c_load_r_rs_b replaces the benthic matrix.
+SEXP c_reset_cache(void) {
+  if (cached_wavelengths != NULL) {
+    R_ReleaseObject(cached_wavelengths);
+    cached_wavelengths = NULL;
+  }
+  if (cached_r_rs_b != NULL) {
+    R_ReleaseObject(cached_r_rs_b);
+    cached_r_rs_b = NULL;
+  }
+  return R_NilValue;
+}
+
 SEXP get_cached_a_w() {
   return cached_a_w;
 }

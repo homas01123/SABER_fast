@@ -2,10 +2,13 @@
 % Please edit documentation in R/registry.R
 \name{list_objective_functions}
 \alias{list_objective_functions}
-\title{List all registered error functions}
+\title{List registered objective functions}
 \usage{
 list_objective_functions()
 }
+\value{
+Character vector of registered objective function names.
+}
 \description{
-List all registered error functions
+List registered objective functions
 }

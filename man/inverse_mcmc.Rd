@@ -2,7 +2,7 @@
 % Please edit documentation in R/inversion_mcmc_baysetools.R
 \name{inverse_mcmc}
 \alias{inverse_mcmc}
-\title{SABER inverse model using MCMC sampling}
+\title{Retrieve bio-optical parameters via MCMC sampling}
 \usage{
 inverse_mcmc(
   rrs,
@@ -16,42 +16,77 @@ inverse_mcmc(
   iterations = 10000,
   burnin = 2000,
   sampler = "DEzs",
-  return_full_output = FALSE,
-  spectral_weights = NULL
+  spectral_weights = NULL,
+  lat = NULL,
+  lon = NULL,
+  date_time = NULL
 )
 }
 \arguments{
-\item{rrs}{data-frame of wavelengths \link{nm} and sub-surface Rrs (must be named as rrs_0m) \link{1/sr}}
+\item{rrs}{Data frame with columns \code{wavelength} [nm] and
+\code{rrs_0m} [sr\eqn{^{-1}}].}
 
-\item{forward_model}{the SA forward model to be used (e.g. "am03")}
+\item{forward_model}{One of \code{"am03"}, \code{"am03_sicf"}, or
+\code{"lee98"}.}
 
-\item{par_inversed}{vector of parameter names to be inversed (e.g. c("chl", "a_dg_440", "bb_p_550"))}
+\item{par_inversed}{Character vector of parameters to retrieve
+(e.g. \code{c("chl", "a_dg_440", "bb_p_550")}).}
 
-\item{prior}{prior function (see make_prior_bundle) or can set as NULL for uniform prior}
+\item{prior}{A BayesianTools prior object (e.g. from
+\code{\link{make_bt_prior_deep}}) or \code{NULL} for a uniform prior
+defined by \code{lower} / \code{upper}.}
 
-\item{lower}{numeric vector containing lower bounds for each parameter in par_inversed. The order must match par_inversed.}
+\item{lower}{Named numeric lower bounds.  Used only when
+\code{prior = NULL}.}
 
-\item{best}{numeric vector containing best guess values for each parameter in par_inversed. The order must match par_inversed.}
+\item{best}{Named numeric initial values.  Used only when
+\code{prior = NULL}.}
 
-\item{upper}{numeric vector containing upper bounds for each parameter in par_inversed. The order must match par_inversed.}
+\item{upper}{Named numeric upper bounds.  Used only when
+\code{prior = NULL}.}
 
-\item{par_fixed}{named list of fixed parameters to be passed to the forward model (e.g. c(water_type = 2, theta_sun = 30, theta_view = 0...))}
+\item{par_fixed}{Named list of parameters held fixed during inversion.}
 
-\item{iterations}{number of MCMC iterations (default = 10000, recommended > 15000)}
+\item{iterations}{Total MCMC iterations.  Default \code{10000}
+(recommended \eqn{\ge 15000}).}
 
-\item{burnin}{number of burnin iterations (default = 2000)}
+\item{burnin}{Burn-in iterations discarded before posterior summary.
+Default \code{2000}.}
 
-\item{sampler}{MCMC sampler to be used (default = "DEzs", see BayesianTools documentation for other options)}
+\item{sampler}{BayesianTools sampler name.  Default \code{"DEzs"}.}
 
-\item{return_full_output}{logical, return optical properties when forward_model = "am03_sicf"? (default = FALSE)}
+\item{spectral_weights}{Optional named numeric vector of per-band weights
+(see \code{\link{create_spectral_weights}}).}
+
+\item{lat, lon, date_time}{Latitude \link{°N}, longitude \link{°E}, and UTC
+\code{POSIXct} timestamp.  Required when
+\code{forward_model = "am03_sicf"}.}
 }
 \value{
-numeric vector of parameter estimates and their standard deviations (e.g. c(chl = 2.5, chl_sd = 0.3, a_dg_440 = 0.1, a_dg_440_sd = 0.02, bb_p_550 = 0.01, bb_p_550_sd = 0.003))
-If forward_model = "am03_sicf" and return_full_output = TRUE, returns list with par_estimates, rrs_modeled, rrs_elastic, rrs_sicf, optical_properties, mcmc_output
+Named numeric vector of MAP estimates followed by posterior SDs:
+\code{c(chl = 2.5, a_dg_440 = 0.10, ..., chl_sd = 0.3, ...)}.
 }
 \description{
-Retrieve optically deep water OSCs and benthic variables from input Rrs and wavelength
+Inverts sub-surface \eqn{R_{rs}} against a semi-analytical forward model
+using Bayesian MCMC (via \pkg{BayesianTools}).  Returns MAP estimates and
+posterior standard deviations.
+}
+\examples{
+\dontrun{
+cfg <- make_inversion_params(depth_m = NA, rrs_df = rrs_obs)
+est <- inverse_mcmc(
+  rrs           = rrs_obs,
+  forward_model = cfg$fwd_model,
+  par_inversed  = cfg$par_inv,
+  prior         = cfg$bt_prior,
+  par_fixed     = cfg$par_fixed,
+  iterations    = 15000,
+  burnin        = 3000
+)
+}
+
 }
 \references{
-Mukherjee, S., Mabit, R. and Bélanger, S. (2025), A semi-analytical Bayesian estimate retrieval algorithm for the inversion of remote-sensing reflectance in optically deep and shallow waters. Limnol Oceanogr Methods. https://doi.org/10.1002/lom3.70004
+Mukherjee, S., Mabit, R. and Bélanger, S. (2025).
+Limnol. Oceanogr. Methods. \doi{10.1002/lom3.70004}
 }

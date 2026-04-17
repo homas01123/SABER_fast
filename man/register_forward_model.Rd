@@ -7,9 +7,9 @@
 register_forward_model(name, fn)
 }
 \arguments{
-\item{name}{Name of the model}
+\item{name}{Name of the model (e.g. \code{"am03"}).}
 
-\item{fn}{A function taking model parameters and returning modeled Rrs}
+\item{fn}{Function \code{f(inputs)} returning a numeric Rrs vector.}
 }
 \description{
 Register a new forward model

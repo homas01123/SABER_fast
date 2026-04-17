@@ -9,7 +9,9 @@
 *.so
 *.so.*
 *.dll
-*.dylib
+*.
+# direcotries to ignore
+tests/
 # aux file types
 *.png
 *.nc
@@ -22,6 +24,9 @@
 *.txt
 *.csv
 *.xml
+# but track package data files in inst/extdata
+!inst/extdata/*.csv
+!inst/extdata/*.txt
 *.safe
 *.zip
 *.xlsx

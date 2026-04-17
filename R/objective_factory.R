@@ -1,18 +1,30 @@
-#' Make objective function from forward model and objective
+#' Build an objective / likelihood function from a forward model
 #'
-#' @param model Name of the forward model
-#' @param objective Name of the objective function
-#' @param rrs_observed Observed Rrs data
-#' @param par_fixed Named list or data frame of fixed parameters
-#' @param minimize Logical, if TRUE returns negative objective for minimization
-#' @param log_prior_fn Optional function `function(par)` returning the log-prior
-#'   density for the **inverted** parameters (as a named numeric vector).
-#'   When supplied and `minimize = TRUE`, the factory returns
-#'   `-(log_ll + log_prior)`, i.e. MAP optimisation.
-#'   When `minimize = FALSE` (MCMC likelihood path) the prior is ignored here
-#'   because BayesianTools handles it via `createBayesianSetup(prior = ...)`.
+#' Combines a registered forward model with an objective function into a single
+#' callable \code{f(par)}.  Used internally by [inverse_mcmc()] and
+#' [inverse_gradient()]; exposed for advanced workflows.
 #'
-#' @return A function returning the model objective/likelihood to be used in an optimization process
+#' @param model       Forward model name: \code{"am03"}, \code{"am03_sicf"}, or
+#'   \code{"lee98"}.
+#' @param objective   Objective: \code{"log-ll"} (Gaussian log-likelihood) or
+#'   \code{"lee99"} (spectral error index).
+#' @param rrs_observed  Data frame with columns \code{wavelength} and
+#'   \code{rrs_0m}.
+#' @param par_inversed  Character vector of inverted parameter names.
+#' @param par_fixed   Named list of fixed parameters passed to the forward
+#'   model.
+#' @param par_meta    Named list of non-numeric metadata
+#'   (\code{sicf_model}, \code{depth_integration}).  Used only for
+#'   \code{"am03_sicf"}.
+#' @param minimize    Logical.  Return \code{-objective} for minimisation?
+#'   Default \code{FALSE} (returns log-likelihood for MCMC).
+#' @param log_prior_fn  Optional \code{function(par)} returning the log-prior.
+#'   Active only when \code{minimize = TRUE}; ignored on the MCMC path.
+#' @param spectral_weights  Optional named numeric per-band weight vector
+#'   (see \code{\link{create_spectral_weights}}).
+#'
+#' @return A function \code{f(par)} → scalar objective value.
+#'
 #' @export
 
 objective_factory <- function(model, objective, rrs_observed, par_inversed, par_fixed = NULL, par_meta = NULL, minimize = FALSE, log_prior_fn = NULL, spectral_weights = NULL) {
@@ -59,15 +71,33 @@ objective_factory <- function(model, objective, rrs_observed, par_inversed, par_
 
   function(par) {
     par_complete <- complete_par(par)
-    
-    # Pass par_meta only for models that support it (am03_sicf)
-    if (model == "am03_sicf" && !is.null(par_meta)) {
-      inputs <- prepare_input(par_complete, rrs_observed, par_meta)
-    } else {
-      inputs <- prepare_input(par_complete, rrs_observed)
+
+    # Guard: return a penalty when parameters are physically invalid.
+    # This is critical for bound-free optimisers (e.g. Levenberg-Marquardt) that
+    # can walk into negative IOP space.  Rather than crashing inside the forward
+    # model we return a large cost (minimisation) or -Inf (likelihood), which
+    # pushes the optimiser back towards the feasible region.
+    inputs <- tryCatch({
+      # Pass par_meta only for models that support it (am03_sicf)
+      if (model == "am03_sicf" && !is.null(par_meta)) {
+        prepare_input(par_complete, rrs_observed, par_meta)
+      } else {
+        prepare_input(par_complete, rrs_observed)
+      }
+    }, error = function(e) NULL)
+
+    if (is.null(inputs)) {
+      return(if (minimize) .Machine$double.xmax / 2 else -Inf)
     }
-    
-    rrs_modeled <- forward_model(inputs)
+
+    rrs_modeled <- tryCatch(
+      forward_model(inputs),
+      error = function(e) NULL
+    )
+
+    if (is.null(rrs_modeled) || !all(is.finite(rrs_modeled))) {
+      return(if (minimize) .Machine$double.xmax / 2 else -Inf)
+    }
 
     result <- objective_function(
       modelled = rrs_modeled,

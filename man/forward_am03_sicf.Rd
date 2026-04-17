@@ -26,17 +26,17 @@ forward_am03_sicf(
 )
 }
 \arguments{
-\item{wavelength}{Vector of wavelengths \link{nm}}
+\item{wavelength}{Vector of wavelengths [nm]}
 
 \item{iop}{List with elements \code{a} and \code{bb}, same length as wavelength}
 
 \item{water_type}{Either 1 or 2 (default = 2)}
 
-\item{theta_sun}{Sun zenith angle \link{degrees}}
+\item{theta_sun}{Sun zenith angle [degrees]}
 
-\item{theta_view}{Sensor view angle \link{degrees}}
+\item{theta_view}{Sensor view angle [degrees]}
 
-\item{h_w}{Optional: water depth \link{m} (enables shallow mode)}
+\item{h_w}{Optional: water depth [m] (enables shallow mode)}
 
 \item{r_b}{Optional: bottom reflectance vector (same length as wavelength)}
 
