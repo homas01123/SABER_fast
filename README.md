@@ -1,5 +1,12 @@
 # S.A.B.E.R (Semi Analytical Bayesian Estimate Retrieval)
 
+> [!WARNING]
+> **This repository is deprecated and no longer maintained.**
+> Development has moved to [**SABERPRO**](https://github.com/homas01123/SABERPRO), which includes Linux/macOS support, additional forward models (SICF), and ongoing maintenance. Please install and use SABERPRO instead:
+> ```r
+> devtools::install_github("homas01123/SABERPRO", dependencies = TRUE)
+> ```
+
 A Semi Analytically parameterized aquatic radiative transfer model to primarily retrieve posterior distributions of Optically Significant Constituents (OSCs), water depth and benthic reflectance from user input of remote sensing reflectance.
 
 Creator and OG developer: Soham Mukherjee || 
